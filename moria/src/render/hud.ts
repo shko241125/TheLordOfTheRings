@@ -1,3 +1,5 @@
+import type { Interactable } from '../sim/interact';
+import type { Level } from '../sim/level';
 import type { Sim } from '../sim/types';
 import { STAMINA_MAX } from '../sim/combat';
 
@@ -17,6 +19,9 @@ export function createHud() {
     #toast { position: fixed; left: 50%; top: 38%; transform: translateX(-50%); font: 600 22px/1 serif; color: #ffd28a; text-shadow: 0 0 8px #000; pointer-events: none; opacity: 0; transition: opacity .25s; }
     #dead { position: fixed; inset: 0; display: none; place-items: center; background: rgba(20,0,0,.55); color: #e8c4b0; font: 28px/1.6 serif; text-align: center; }
     #dead small { display: block; font-size: 14px; color: #b09080; }
+    #prompt { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); font: 16px/1 serif; color: #f0e2c0; text-shadow: 0 0 6px #000; pointer-events: none; display: none; }
+    #prompt b { display: inline-block; padding: 2px 7px; margin-right: 6px; border: 1px solid #cbbd9e; border-radius: 3px; font: 600 13px ui-monospace, monospace; }
+    #minimap { position: fixed; right: 16px; top: 16px; pointer-events: none; opacity: .85; }
     .gob-mark { position: fixed; left: 0; top: 0; font: 700 22px/1 serif; color: #ffcf6a; text-shadow: 0 0 6px #000, 0 0 2px #000; pointer-events: none; display: none; }
   `;
   document.head.appendChild(style);
@@ -27,7 +32,8 @@ export function createHud() {
   const toast = Object.assign(document.createElement('div'), { id: 'toast' });
   const dead = Object.assign(document.createElement('div'), { id: 'dead' });
   dead.innerHTML = '쓰러졌다<small>R — 다시 시작</small>';
-  document.body.append(root, lock, toast, dead);
+  const prompt = Object.assign(document.createElement('div'), { id: 'prompt' });
+  document.body.append(root, lock, toast, dead, prompt);
   const hp = root.querySelector<HTMLElement>('#hp > i')!;
   const st = root.querySelector<HTMLElement>('#st > i')!;
   const stBar = root.querySelector<HTMLElement>('#st')!;
@@ -41,6 +47,12 @@ export function createHud() {
       toast.textContent = text;
       toast.style.opacity = '1';
       toastUntil = clock + seconds;
+    },
+    /** 가까운 상호작용 대상 안내 (창이 열려 있으면 숨긴다) */
+    prompt(target: Interactable | null, hidden: boolean) {
+      const text = !target || hidden ? '' : target.kind === 'door' ? '비문 읽기' : target.lit ? '쉬기 (저장)' : '화로 밝히기';
+      prompt.style.display = text ? 'block' : 'none';
+      if (text) prompt.innerHTML = `<b>E</b>${text}`;
     },
     update(dt: number, sim: Sim, lockScreen: { x: number; y: number } | null) {
       clock += dt;
@@ -58,6 +70,80 @@ export function createHud() {
       } else lock.style.display = 'none';
       if (clock > toastUntil) toast.style.opacity = '0';
       dead.style.display = p.action === 'dead' ? 'grid' : 'none';
+    },
+  };
+}
+
+/**
+ * 미니맵 (오른쪽 위). 가 본 방과, 밝힌 화로가 있는 방·그 이웃 방만 그린다 (계획서: 드워프 등불이 지도를 밝힌다).
+ * 방이 없는 레벨에서는 만들지 않는다. 위쪽 = 북(−Z).
+ */
+export function createMinimap(level: Level) {
+  const rooms = level.rooms ?? [];
+  if (!rooms.length) return null;
+  const minX = Math.min(...rooms.map((r) => r.min[0]));
+  const maxX = Math.max(...rooms.map((r) => r.max[0]));
+  const minZ = Math.min(...rooms.map((r) => r.min[2]));
+  const maxZ = Math.max(...rooms.map((r) => r.max[2]));
+  const scale = 240 / (maxZ - minZ);
+  const pad = 6;
+  const canvas = Object.assign(document.createElement('canvas'), { id: 'minimap' });
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = (maxX - minX) * scale + pad * 2;
+  const h = (maxZ - minZ) * scale + pad * 2;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
+  document.body.appendChild(canvas);
+  const g = canvas.getContext('2d')!;
+  const X = (x: number) => pad + (x - minX) * scale;
+  const Y = (z: number) => pad + (z - minZ) * scale;
+  const visited = new Set<number>();
+  const portals = level.portals ?? [];
+  const braziers = level.braziers ?? [];
+  const roomOf = (x: number, y: number, z: number) =>
+    rooms.findIndex((r) => x >= r.min[0] && x <= r.max[0] && y >= r.min[1] - 0.5 && y <= r.max[1] && z >= r.min[2] && z <= r.max[2]);
+
+  return {
+    visit(room: number) {
+      if (room >= 0) visited.add(room);
+    },
+    draw(sim: Sim, px: number, pz: number, yaw: number) {
+      const shown = new Set(visited);
+      sim.braziers.forEach((b) => {
+        if (!b.lit) return;
+        const r = roomOf(b.x, b.y + 0.5, b.z);
+        shown.add(r);
+        for (const pt of portals) if (pt.a === r) shown.add(pt.b); else if (pt.b === r) shown.add(pt.a);
+      });
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, w, h);
+      g.fillStyle = 'rgba(0,0,0,.45)';
+      g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#8a7a5c';
+      g.fillStyle = 'rgba(120,100,70,.28)';
+      g.lineWidth = 1;
+      rooms.forEach((r, i) => {
+        if (!shown.has(i)) return;
+        g.fillRect(X(r.min[0]), Y(r.min[2]), (r.max[0] - r.min[0]) * scale, (r.max[2] - r.min[2]) * scale);
+        g.strokeRect(X(r.min[0]) + 0.5, Y(r.min[2]) + 0.5, (r.max[0] - r.min[0]) * scale - 1, (r.max[2] - r.min[2]) * scale - 1);
+      });
+      braziers.forEach((b, i) => {
+        if (!shown.has(roomOf(b[0], b[1] + 0.5, b[2]))) return;
+        g.fillStyle = sim.braziers[i]?.lit ? '#ffa040' : '#666';
+        g.beginPath();
+        g.arc(X(b[0]), Y(b[2]), 2.5, 0, Math.PI * 2);
+        g.fill();
+      });
+      // 플레이어: 카메라가 보는 방향 삼각형 (앞 = (−sin, −cos))
+      const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+      g.fillStyle = '#f4ecd8';
+      g.beginPath();
+      g.moveTo(X(px + fx * 3), Y(pz + fz * 3));
+      g.lineTo(X(px - fx * 1.5 + fz * 1.6), Y(pz - fz * 1.5 - fx * 1.6));
+      g.lineTo(X(px - fx * 1.5 - fz * 1.6), Y(pz - fz * 1.5 + fx * 1.6));
+      g.fill();
     },
   };
 }

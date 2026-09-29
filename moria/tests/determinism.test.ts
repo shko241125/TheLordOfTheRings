@@ -1,7 +1,8 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { TEST_ROOM } from '../src/sim/level';
-import { scriptedInputs } from '../src/sim/scripted';
+import { ZONE1_TICKS, scriptedInputs, zone1Inputs } from '../src/sim/scripted';
+import { ZONE1 } from '../src/sim/zone1';
 import { createSim, disposeSim, hashSim, stepSim, type InputFrame } from '../src/sim/sim';
 import golden from './golden/determinism.json';
 
@@ -72,4 +73,17 @@ describe('결정성', () => {
     expect(waves).toBeGreaterThan(0); // 이 실행 안에 물결이 실제로 나온다 (헛검사 방지)
     expect(hashes).toEqual(golden.longHashes);
   }, 60_000);
+
+  it('구역 1 경로(문·디렉터·구역 내비메시) 해시가 골든과 같다 — 브라우저 자가진단(runDeterminism().zone1)과 같은 값', () => {
+    const sim = createSim(ZONE1, SEED);
+    const out: number[] = [];
+    for (const f of zone1Inputs(SEED, ZONE1_TICKS)) {
+      stepSim(sim, f);
+      sim.events.length = 0;
+      if (sim.tick % 300 === 0) out.push(hashSim(sim));
+    }
+    expect(sim.doors[0]!.open).toBe(true);
+    disposeSim(sim);
+    expect(out).toEqual((golden as { zone1?: number[] }).zone1);
+  }, 120_000);
 });

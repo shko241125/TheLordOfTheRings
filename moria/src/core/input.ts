@@ -1,6 +1,6 @@
 import { radToAngle } from './trig';
 import {
-  BTN_CROUCH, BTN_DODGE, BTN_HEAVY, BTN_LIGHT, BTN_LOCK, BTN_PARRY, BTN_SENSE, BTN_SPRINT, BTN_THROW, BTN_TORCH, type InputFrame,
+  BTN_CROUCH, BTN_DODGE, BTN_HEAVY, BTN_INTERACT, BTN_LIGHT, BTN_LOCK, BTN_PARRY, BTN_SENSE, BTN_SPRINT, BTN_THROW, BTN_TORCH, type InputFrame,
 } from '../sim/types';
 
 const MOUSE_SENS = 0.0022; // rad/px
@@ -73,7 +73,10 @@ export function createInput(target: HTMLElement) {
   let lastPadPoll = performance.now();
   let pad: { lx: number; ly: number; buttons: (i: number) => boolean } | null = null;
 
+  // 글자 입력창(두린의 문)에 치는 동안에는 게임 조작으로 받지 않는다 ('mellon'의 e가 E 상호작용이 되지 않게)
+  const typing = (e: Event) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
   const onDown = (e: KeyboardEvent) => {
+    if (typing(e)) return;
     if (e.code === 'Space' || e.code === 'Tab') e.preventDefault(); // 페이지 스크롤·포커스 이동 방지
     if (e.repeat) return;
     keys.add(e.code);
@@ -82,6 +85,7 @@ export function createInput(target: HTMLElement) {
     if (e.code === 'Space') space.down(now);
     if (e.code === 'KeyF') fKey.down(now);
     if (e.code === 'KeyV') pulses |= BTN_SENSE;
+    if (e.code === 'KeyE') pulses |= BTN_INTERACT;
   };
   const onUp = (e: KeyboardEvent) => {
     keys.delete(e.code);
@@ -143,6 +147,7 @@ export function createInput(target: HTMLElement) {
     if (edge(10)) crouch = !crouch;
     if (edge(11)) pulses |= BTN_LOCK;
     if (edge(13)) pulses |= BTN_SENSE; // 십자키 아래
+    if (edge(0)) pulses |= BTN_INTERACT; // A
     return { lx, ly, buttons: pressed };
   }
 
@@ -182,6 +187,12 @@ export function createInput(target: HTMLElement) {
         yaw: radToAngle(view.yaw),
       };
     },
+    /** UI가 한 틱짜리 버튼을 넣는다 (수수께끼 정답 → BTN_WORD) */
+    pulse(bits: number) {
+      pulses |= bits;
+    },
+    /** 창을 여닫을 때: 눌린 채 남은 키를 비운다 */
+    release: onBlur,
     /** raw 마우스 입력을 먼저 시도하고, 지원하지 않으면 일반 포인터 잠금으로 */
     async lock() {
       try {

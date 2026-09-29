@@ -1,4 +1,4 @@
-# 모리아의 그림자 (M1 — 전투 코어)
+# 모리아의 그림자 (M2 진행 중 — 구역 1: 서문과 거대 계단)
 
 ```bash
 npm install
@@ -20,12 +20,20 @@ npm run build        # 타입 검사 + 프로덕션 빌드
 | 락온 | 휠 클릭 | R3 |
 | 횃불 내려놓기·줍기·예비 켜기 / 던지기 | F 짧게 / 길게 | 십자키 위 짧게 / 길게 |
 | 돌의 감각(음파, 8초 재사용) | V | 십자키 아래 |
-| 다시 시작 (쓰러졌을 때) | R | — |
+| 화로 밝히기·쉬기(저장) / 두린의 문 비문 읽기 | E | A (비문 입력은 키보드) |
+| 다시 시작 (쓰러졌을 때 — 마지막으로 쉰 화로에서) | R | — |
 
 `?shake=0` — 화면 흔들림 끄기 (접근성)
 
+## 진행
+
+서문 밖에서 시작한다. 문 앞에서 E → 비문의 수수께끼에 답하면 문이 열린다 (60초가 지나면 간달프가 힌트를 준다).
+화로에서 E로 쉬면 체력·예비 횃불이 차고 저장된다. 새로고침하면 마지막 화로에서 이어한다.
+
 ## URL 옵션
 
+- `?new=1` — 저장 지우고 새 게임
+- `?zone=test` — M0~M1 시험 방 (결정성 골든·전투 검증용, 저장 안 함)
 - `?class=human|dwarf|elf` — 클래스 (키·속도·복장이 다르다)
 - `?rig=ual|kaykit` — 캐릭터 에셋 비교 (기본 ual: 사실적 비율 / kaykit: SD 비율)
 - `?backend=webgl` — WebGL2 폴백 강제
@@ -37,7 +45,10 @@ npm run build        # 타입 검사 + 프로덕션 빌드
   - `player.ts` 이동·행동(콤보·강공격·회피·패링·스태미나·입력 버퍼·락온), `combat.ts` 수치·판정
   - `enemy.ts` 고블린 AI(순찰→의심→추격→공전⇄공격, 공격 토큰 2), `perception.ts` 빛·소음 감지 필드
   - `torch.ts` 횃불 들기·내려놓기·던지기, `nav.ts` navcat 내비메시·경로, `move.ts` Rapier KCC 공용 이동
-- `src/render` — 렌더러, 씬, 카메라(락온·흔들림), 캐릭터(`character.ts`), 애니메이션(`locomotion.ts` 이동+행동 레이어, `actionTime.ts` 타격 순간 맞춤), 복장(`props.ts`), 고블린(`goblins.ts`), HUD(`hud.ts`)
+  - `director.ts` 북소리 디렉터, `interact.ts` 문·화로·진행 상태, `zone1.ts` 구역 1 (방·통로·문·화로 데이터)
+- `src/render` — 렌더러, 씬, 카메라(락온·흔들림), 캐릭터(`character.ts`), 애니메이션(`locomotion.ts` 이동+행동 레이어, `actionTime.ts` 타격 순간 맞춤), 복장(`props.ts`), 고블린(`goblins.ts`), HUD·미니맵(`hud.ts`), 두린의 문 창(`durin.ts`), 돌의 감각 후처리(`post.ts`)
+  - 씬은 방마다 도형을 (재질, 그림자)별로 합치고, 통로가 시야에 걸리는 방만 그린다 (포털 컬링)
+- `src/save.ts` — 저장 (localStorage, 버전 검사), `src/core/riddle.ts` — 수수께끼 판정
 - `tests/golden/determinism.json` — 결정성 기준 해시. 레벨·물리·이동 파라미터를 의도적으로 바꿨을 때만 재생성한다.
 
 에셋 출처와 라이선스는 `CREDITS.md`.

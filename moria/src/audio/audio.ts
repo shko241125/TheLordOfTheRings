@@ -193,6 +193,13 @@ export function createAudio() {
         tone(1320, 0.5, 0.25);
         tone(1980, 0.35, 0.12);
         burst(3000, 3, 0.08, 0.4);
+      } else if (ev.type === 'door') {
+        // 돌문이 끌리는 낮은 울림
+        burst(70, 0.6, 2.6, 0.9, 40);
+        tone(46, 2.4, 0.35);
+      } else if (ev.type === 'rest') {
+        burst(600, 0.7, 0.9, ev.first ? 0.6 : 0.25, 200); // 불이 확 붙는 소리
+        tone(ev.first ? 196 : 220, 1.6, 0.12);
       } else if (ev.type === 'sense') {
         // 돌을 두드리는 '톡' + 길게 울리는 공명
         burst(1400, 4, 0.05, 0.8);

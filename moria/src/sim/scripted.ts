@@ -1,7 +1,7 @@
 import { createRng } from '../core/rng';
 import { ANGLE_STEPS } from '../core/trig';
 import {
-  BTN_CROUCH, BTN_DODGE, BTN_HEAVY, BTN_LIGHT, BTN_LOCK, BTN_PARRY, BTN_SENSE, BTN_SPRINT, BTN_THROW, BTN_TORCH, type InputFrame,
+  BTN_CROUCH, BTN_DODGE, BTN_HEAVY, BTN_LIGHT, BTN_LOCK, BTN_PARRY, BTN_SENSE, BTN_SPRINT, BTN_THROW, BTN_TORCH, BTN_WORD, type InputFrame,
 } from './types';
 
 /**
@@ -48,4 +48,19 @@ export function scriptedInputs(seed: number, ticks: number): InputFrame[] {
     out.push({ ...frame, buttons: frame.buttons | extra, yaw });
   }
   return out;
+}
+
+/**
+ * 구역 1 경로 입력 (골든용): 서문 밖에서 문으로 걸어가 암호 → 안으로 들어가 이후는 scriptedInputs.
+ * 문·디렉터·구역 내비메시까지 한 번에 엔진 간 비교한다.
+ */
+/** 구역 1 골든 길이: 50초 (문 열기 + 디렉터 휴식 + 전투 입력) */
+export const ZONE1_TICKS = 3000;
+
+export function zone1Inputs(seed: number, ticks: number): InputFrame[] {
+  const out: InputFrame[] = [];
+  for (let i = 0; i < 300; i++) out.push({ buttons: 0, moveX: 0, moveY: 127, yaw: 0 });
+  out.push({ buttons: BTN_WORD, moveX: 0, moveY: 127, yaw: 0 });
+  for (let i = 0; i < 240; i++) out.push({ buttons: 0, moveX: 0, moveY: 127, yaw: 0 });
+  return out.concat(scriptedInputs(seed, Math.max(0, ticks - out.length)));
 }

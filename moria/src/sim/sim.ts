@@ -10,8 +10,9 @@ import { makeController } from './move';
 import { buildNavMesh } from './nav';
 import { allLights, emitNoise, lightAt, pruneNoise } from './perception';
 import { stepPlayer } from './player';
+import { stepInteract } from './interact';
 import { giveStartingTorch, updateTorches } from './torch';
-import { BTN_DODGE, BTN_LIGHT, G_CHAR, G_LEVEL, groups, type InputFrame, type Sim, type SimLight } from './types';
+import { BTN_DODGE, BTN_LIGHT, G_CHAR, G_LEVEL, groups, type InputFrame, type Sim, type SimLight, type V3 } from './types';
 
 export * from './types';
 
@@ -42,6 +43,13 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
         : RAPIER.ColliderDesc.cylinder(s.halfHeight, s.radius);
     world.createCollider(col.setCollisionGroups(groups(G_LEVEL, 0xffff)), body);
   }
+
+  // 문: 레벨 바디 다음 순서
+  const doors = (level.doors ?? []).map((d) => {
+    const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(d.pos[0], d.pos[1], d.pos[2]));
+    world.createCollider(RAPIER.ColliderDesc.cuboid(d.half[0], d.half[1], d.half[2]).setCollisionGroups(groups(G_LEVEL, 0xffff)), body);
+    return { pos: [...d.pos] as V3, half: [...d.half] as V3, body, open: false };
+  });
 
   const [sx, sy, sz] = level.spawn;
   const body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(sx, sy, sz));
@@ -77,6 +85,9 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
     director: createDirector(),
     spawnPoints: (level.spawnPoints ?? []).map((p) => [p[0], p[1], p[2]] as [number, number, number]),
     nextEnemyId: level.enemies?.length ?? 0,
+    doors,
+    braziers: (level.braziers ?? []).map(([x, y, z]) => ({ x, y, z, lit: false })),
+    checkpoint: -1,
   };
   (level.enemies ?? []).forEach((e, i) => sim.enemies.push(createEnemy(sim, i, [...e.pos], e.patrol.map((p) => [...p] as [number, number, number]))));
   giveStartingTorch(sim);
@@ -126,10 +137,13 @@ export function stepSim(sim: Sim, input: InputFrame): void {
   }
   const lights = allLights(sim);
   sim.director.cameraYaw = input.yaw;
+  const pressed = input.buttons & ~sim.player.prevButtons; // stepPlayer가 prevButtons를 갱신하기 전에
   stepPlayer(sim, input);
+  stepInteract(sim, pressed);
   resolvePlayerAttack(sim, lights);
   stepEnemies(sim, lights);
-  stepDirector(sim, lights);
+  // 문이 닫힌 동안(서문 밖)은 디렉터가 쉰다 — 내비메시는 문을 열린 상태로 보므로 물결이 문에 막혀 버린다
+  if (sim.doors.every((d) => d.open)) stepDirector(sim, lights);
   updateTorches(sim);
   pruneNoise(sim);
   sim.world.step();
@@ -166,6 +180,8 @@ export function hashSim(sim: Sim): number {
   for (const e of sim.enemies) h = mix(h, e.id, e.hp, e.awareness, e.facing, e.vx, e.vz, e.aiTick, e.swingTick, e.hasToken ? 1 : 0, e.cooldownUntil);
   for (const t of sim.torches) h = mix(h, t.id, t.x, t.y, t.z, t.burn);
   const d = sim.director;
+  // 문·화로가 없는 레벨(시험 방)은 해시에 섞지 않는다 → 기존 골든 해시 유지
+  if (sim.doors.length + sim.braziers.length > 0) h = mix(h, sim.checkpoint, ...sim.doors.map((x) => (x.open ? 1 : 0)), ...sim.braziers.map((x) => (x.lit ? 1 : 0)));
   h = mix(h, ['relax', 'buildup', 'warn', 'peak', 'fade'].indexOf(d.phase), d.phaseTick, d.phaseLen, d.intensity, d.bpm, sim.nextEnemyId, sim.enemies.length);
   return h;
 }

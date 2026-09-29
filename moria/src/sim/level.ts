@@ -20,7 +20,18 @@ export type Level = {
   enemies?: readonly EnemySpawn[];
   /** 북소리 디렉터의 물결 스폰 후보 (어두운 구석·굴 입구). 실제 스폰은 규칙 3개를 통과한 곳만 */
   spawnPoints?: readonly Vec3[];
+  /** 포털 컬링용 방 (렌더 전용). 각 방의 벽·바닥은 방 경계 안에 있어 방 하나를 숨겨도 이웃 방에 구멍이 나지 않는다 */
+  rooms?: readonly Room[];
+  portals?: readonly Portal[];
+  /** 레벨 바디 다음 순서로 만든다 (결정성 규칙 4). 내비메시에는 넣지 않는다 — 열린 상태 기준 */
+  doors?: readonly { pos: Vec3; half: Vec3 }[];
+  /** 화로 위치 (바닥 높이). 받침은 solids에 따로 있다 */
+  braziers?: readonly Vec3[];
 };
+
+export type Room = { name: string; min: Vec3; max: Vec3 };
+/** 두 방을 잇는 통로 구멍 (AABB) */
+export type Portal = { a: number; b: number; min: Vec3; max: Vec3 };
 
 const ROOM = 20; // 방 반폭 (m)
 const WALL_H = 8;

@@ -8,15 +8,19 @@ import { playerPose } from './render/actionTime';
 import { createFollowCamera } from './render/camera';
 import { loadCharacter, type RigId } from './render/character';
 import { createGoblins } from './render/goblins';
-import { createHud } from './render/hud';
+import { createDurinUI } from './render/durin';
+import { createHud, createMinimap } from './render/hud';
 import { createLocomotion } from './render/locomotion';
 import { createPost } from './render/post';
 import { dress } from './render/props';
 import { createRenderer } from './render/renderer';
 import { buildScene, type LooseTorch } from './render/scene';
 import { CLASS_STATS, type ClassId } from './sim/classes';
+import { nearestInteractable, progressOf, restoreProgress } from './sim/interact';
 import { TEST_ROOM } from './sim/level';
-import { createSim, stepSim } from './sim/sim';
+import { BTN_WORD, createSim, stepSim } from './sim/sim';
+import { ZONE1 } from './sim/zone1';
+import { clearSave, loadSave, writeSave } from './save';
 
 const WORLD_SEED = 20260928;
 /** 캡슐 중심 → 눈높이 비율 (키 대비) */
@@ -41,14 +45,22 @@ async function boot() {
   const qs = new URLSearchParams(location.search);
   const forceWebGL = qs.get('backend') === 'webgl';
   const shakeOn = qs.get('shake') !== '0'; // 접근성: 화면 흔들림 끄기
-  const classId = param<ClassId>('class', ['human', 'dwarf', 'elf'], 'human');
+  // 구역: 기본은 구역 1. ?zone=test 는 M0~M1 시험 방 (결정성 골든·전투 검증용 — 저장하지 않는다)
+  const testRoom = qs.get('zone') === 'test';
+  const level = testRoom ? TEST_ROOM : ZONE1;
+  if (qs.get('new') === '1') clearSave();
+  const save = testRoom ? null : loadSave();
+  // 이어하기면 저장의 종족을 따른다 (URL로 바꾸려면 ?new=1)
+  const classId = save?.classId ?? param<ClassId>('class', ['human', 'dwarf', 'elf'], 'human');
   const rigId = param<RigId>('rig', ['ual', 'kaykit'], 'ual');
   const stats = CLASS_STATS[classId];
 
   await RAPIER.init();
   const { renderer, backend } = await createRenderer(canvas, forceWebGL);
-  const sim = createSim(TEST_ROOM, WORLD_SEED, classId);
-  const gs = buildScene(TEST_ROOM, renderer, backend);
+  const sim = createSim(level, WORLD_SEED, classId);
+  if (save) restoreProgress(sim, save.progress);
+  const gs = buildScene(level, renderer, backend);
+  const minimap = createMinimap(level);
   const rig = await loadCharacter(classId, rigId);
   const dressing = dress(rig, classId);
   const loco = createLocomotion(rig, stats);
@@ -57,6 +69,11 @@ async function boot() {
   const hud = createHud();
   const follow = createFollowCamera();
   const input = createInput(canvas);
+  const durin = createDurinUI(
+    () => input.pulse(BTN_WORD),
+    () => input.release(),
+  );
+  if (save) start.insertAdjacentHTML('beforeend', '<small>이어하기: 마지막으로 쉰 화로에서 · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>');
   const loop = createFixedStep();
   const post = createPost(renderer, gs.scene, follow.camera);
   const audio = createAudio();
@@ -103,7 +120,13 @@ async function boot() {
     follow.resize();
   });
   window.addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLInputElement) return;
+    // 쓰러지면 새로고침 → 저장(마지막 화로)에서 다시 시작
     if (e.code === 'KeyR' && sim.player.action === 'dead') location.reload();
+    if (e.code === 'KeyE' && nearestInteractable(sim)?.kind === 'door') {
+      e.preventDefault(); // 이 E가 방금 포커스를 받은 입력창에 'e'로 들어가지 않게
+      durin.open();
+    }
   });
 
   const dev = import.meta.env.DEV ? await import('./dev').then((m) => m.attachDev(renderer, gs, backend)) : null;
@@ -154,6 +177,10 @@ async function boot() {
     for (const ev of sim.events.splice(0)) {
       goblins.onEvent(ev);
       audio.event(ev);
+      if (ev.type === 'rest') {
+        const saved = !testRoom && writeSave(classId, progressOf(sim));
+        hud.toast(`${ev.first ? '화로가 타오른다' : '불 곁에서 쉬었다'}${saved ? ' · 저장됨' : ''}`, 1.6);
+      } else if (ev.type === 'door') hud.toast('두린의 문이 열린다', 1.6);
       if (ev.type === 'sense') sense = { x: ev.x, y: ev.y, z: ev.z, maxR: ev.radius, start: now };
       else if (ev.type === 'hit' && ev.dark >= 1.35) hud.toast('어둠의 일격', 0.45);
       if (ev.type === 'parry') {
@@ -215,6 +242,7 @@ async function boot() {
       looseList.push(q ? { x: t.x, y: t.y, z: t.z, qx: q.x, qy: q.y, qz: q.z, qw: q.w } : { x: t.x, y: t.y - 0.1, z: t.z, ...LYING });
     }
     gs.update(view, looseList, holding);
+    gs.props(dt, sim.doors.map((d) => d.open), sim.braziers.map((b) => b.lit), view);
 
     // --- 돌의 감각 (후처리 음파 + 움직이는 고블린 드러내기) ---
     const st = sense.start < 0 ? -1 : (now - sense.start) / 1000;
@@ -224,7 +252,7 @@ async function boot() {
     Object.assign(goblins.sense, { x: sense.x, z: sense.z, radius: senseR, strength: senseS });
 
     // --- 적 ---
-    goblins.update(animDt, sim.hitstop > 0 ? 1 : alpha, follow.camera);
+    goblins.update(animDt, sim.hitstop > 0 ? 1 : alpha, follow.camera, gs.seen); // 방 가시성은 지난 프레임 cull 결과 (1프레임 지연)
 
     // --- 스팅 경보: 20m 안에 살아 있는 적이 있으면 칼날이 푸르게 (가까울수록 밝게) ---
     if (dressing.blade) {
@@ -254,6 +282,14 @@ async function boot() {
     gs.fill.intensity = FILL_INTENSITY * (follow.arm / follow.armMax) ** 2;
 
     hud.update(dt, sim, lockT ? goblins.screenPos(lockT.id, follow.camera) : null);
+    const target = nearestInteractable(sim);
+    hud.prompt(target, durin.isOpen || sim.player.action !== 'free');
+    const hint = durin.update(dt, target?.kind === 'door');
+    if (hint) hud.toast(hint, 6);
+    const room = gs.roomAt(view);
+    minimap?.visit(room);
+    minimap?.draw(sim, view.x, view.z, input.view.yaw);
+    const visibleRooms = gs.cull(follow.camera, view);
     post.render();
     dev?.update();
 
@@ -269,7 +305,7 @@ async function boot() {
         `${backend.toUpperCase()} · ${fps.toFixed(0)} FPS · 조명 ${s.lightingMode}(${s.torchLights}) · ${classId}/${rigId}\n` +
         `속도 ${speed.toFixed(2)} m/s · ${sim.player.action} · 고블린 ${alive}/${sim.enemies.length} · 공격권 ${sim.tokens} · ` +
         `북 ${sim.director.phase} ${sim.director.bpm.toFixed(0)}bpm 긴장 ${sim.director.intensity.toFixed(2)} · ` +
-        `tick ${sim.tick} · draw ${renderer.info.render.drawCalls}`;
+        `tick ${sim.tick} · draw ${renderer.info.render.drawCalls} · 방 ${room >= 0 ? level.rooms![room]!.name : '-'} (보임 ${visibleRooms.join(',')})`;
     }
   });
 

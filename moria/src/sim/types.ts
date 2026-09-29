@@ -29,6 +29,9 @@ export const BTN_LOCK = 1 << 6; // 휠 클릭
 export const BTN_TORCH = 1 << 7; // F 짧게: 내려놓기 / 줍기 / 예비 횃불 켜기
 export const BTN_THROW = 1 << 8; // F 길게: 던지기
 export const BTN_SENSE = 1 << 9; // V: 돌의 감각
+export const BTN_INTERACT = 1 << 10; // E: 화로 밝히기·쉬기
+/** 두린의 문 암호가 맞았다 (수수께끼 UI가 판정해 한 틱 켠다 — 입력으로 기록되므로 리플레이가 재현한다) */
+export const BTN_WORD = 1 << 11;
 
 export type ActionKind = 'free' | 'attack' | 'dodge' | 'parry' | 'stagger' | 'dead';
 
@@ -125,6 +128,12 @@ export type Enemy = Mover & {
   staggerLen: number;
 };
 
+/** 열리는 문 (두린의 문). 닫힌 동안만 물리 바디가 있다 */
+export type Door = { readonly pos: V3; readonly half: V3; body: RAPIER.RigidBody | null; open: boolean };
+
+/** 드워프 화로 = 체크포인트. 밝히면 빛이 되고, 그 앞에서 쉬면 체력·횃불이 차고 저장된다 */
+export type Brazier = { readonly x: number; readonly y: number; readonly z: number; lit: boolean };
+
 export type SimLight = { x: number; y: number; z: number; intensity: number; range: number };
 
 export type NoiseEvent = { x: number; y: number; z: number; tick: number; ttl: number; radius: number; loudness: number };
@@ -171,7 +180,9 @@ export type SimEvent =
   | { type: 'alert'; tick: number; enemy: number }
   | { type: 'drums'; tick: number; phase: DirectorPhase }
   | { type: 'wave'; tick: number; count: number }
-  | { type: 'sense'; tick: number; x: number; y: number; z: number; radius: number };
+  | { type: 'sense'; tick: number; x: number; y: number; z: number; radius: number }
+  | { type: 'door'; tick: number; door: number }
+  | { type: 'rest'; tick: number; brazier: number; first: boolean };
 
 export type Sim = {
   tick: number;
@@ -194,6 +205,10 @@ export type Sim = {
   /** 디렉터가 물결을 부를 수 있는 자리 (레벨 데이터) */
   readonly spawnPoints: readonly V3[];
   nextEnemyId: number;
+  readonly doors: Door[];
+  readonly braziers: Brazier[];
+  /** 마지막으로 쉰 화로 (−1 = 없음) */
+  checkpoint: number;
 };
 
 /** 충돌 그룹: (소속 << 16) | 필터 */

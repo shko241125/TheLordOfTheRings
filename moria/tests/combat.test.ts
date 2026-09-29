@@ -115,7 +115,7 @@ describe('감지 필드', () => {
     expect(lit).toBeGreaterThan(8);
     expect(dark).toBeLessThan(lit * 0.5);
     expect(dark).toBeGreaterThan(0); // 코앞의 기척으로는 결국 들킨다
-  });
+  }, 60_000); // 시뮬레이션 2개 × 최대 3000틱 — 병렬 실행 부하에서 기본 5초를 넘긴 적이 있다
 });
 
 describe('플레이어 전투', () => {

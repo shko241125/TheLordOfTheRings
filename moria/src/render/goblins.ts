@@ -205,7 +205,8 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
     },
     /** 돌의 감각: 음파가 지나간 반경 안에서 움직이는 고블린을 청백색으로 드러낸다 (멈춰 있으면 안 보인다) */
     sense: { x: 0, z: 0, radius: 0, strength: 0 },
-    update(dt: number, alpha: number, camera: Camera) {
+    /** seen: 그 자리가 지금 보이는 방인가 (포털 컬링 결과). 안 보이면 그리지도, 애니메이션을 돌리지도 않는다 */
+    update(dt: number, alpha: number, camera: Camera, seen: (x: number, y: number, z: number) => boolean = () => true) {
       clock += dt;
       for (const g of list) {
         const e = g.e;
@@ -213,6 +214,11 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
         const x = g.prev.x + (g.curr.x - g.prev.x) * alpha;
         const y = g.prev.y + (g.curr.y - g.prev.y) * alpha;
         const z = g.prev.z + (g.curr.z - g.prev.z) * alpha;
+        g.root.visible = seen(x, y, z);
+        if (!g.root.visible) {
+          g.mark.style.display = 'none';
+          continue;
+        }
         g.root.position.set(x, y - drop, z);
         g.root.rotation.y = angleToRad(g.prev.f + angleDiff(g.prev.f, g.curr.f) * alpha) + MODEL_YAW_OFFSET;
 
