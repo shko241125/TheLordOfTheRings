@@ -6,8 +6,9 @@ import type { GameScene } from './render/scene';
 import type { Backend } from './render/renderer';
 import { TEST_ROOM, type Level } from './sim/level';
 import { ZONE1 } from './sim/zone1';
-import { ZONE1_TICKS, scriptedInputs, zone1Inputs } from './sim/scripted';
-import { createSim, disposeSim, hashSim, stepSim } from './sim/sim';
+import { HORDE_TICKS, TROLL_TICKS, ZONE1_TICKS, hordeStart, scriptedInputs, trollStart, zone1Inputs } from './sim/scripted';
+import { createSim, disposeSim, hashSim, stepSim, type Sim } from './sim/sim';
+import { restoreSim, takeSnapshot } from './sim/snapshot';
 
 /** 개발 빌드 전용: 성능 패널 + 조명 튜닝 패널. main.ts가 import.meta.env.DEV일 때만 동적 import 한다. */
 export async function attachDev(renderer: WebGPURenderer, gs: GameScene, backend: Backend) {
@@ -29,11 +30,12 @@ export async function attachDev(renderer: WebGPURenderer, gs: GameScene, backend
  * tests/determinism.test.ts와 같은 조건으로 브라우저 엔진에서 해시를 계산한다.
  * 렌더러 없이도 돌도록 Rapier 초기화를 직접 한다 (init은 중복 호출해도 안전함을 확인).
  */
-export async function runDeterminism(): Promise<{ hashes: number[]; longHashes: number[]; zone1: number[] }> {
+export async function runDeterminism(): Promise<{ hashes: number[]; longHashes: number[]; zone1: number[]; troll: number[]; horde: number[]; snapshot: { continuous: number; restored: number } }> {
   await RAPIER.init();
   const seed = 20260928;
-  const run = (ticks: number, every: number, level: Level = TEST_ROOM, inputs = scriptedInputs) => {
+  const run = (ticks: number, every: number, level: Level = TEST_ROOM, inputs = scriptedInputs, setup?: (s: Sim) => void) => {
     const sim = createSim(level, seed);
+    setup?.(sim);
     const out: number[] = [];
     for (const f of inputs(seed, ticks)) {
       stepSim(sim, f);
@@ -43,7 +45,29 @@ export async function runDeterminism(): Promise<{ hashes: number[]; longHashes: 
     disposeSim(sim);
     return out;
   };
-  return { hashes: run(600, 60), longHashes: run(6000, 600), zone1: run(ZONE1_TICKS, 300, ZONE1, zone1Inputs) };
+  return { hashes: run(600, 60), longHashes: run(6000, 600), zone1: run(ZONE1_TICKS, 300, ZONE1, zone1Inputs), troll: run(TROLL_TICKS, 180, ZONE1, scriptedInputs, trollStart), horde: run(HORDE_TICKS, 120, ZONE1, scriptedInputs, hordeStart), snapshot: snapshotRoundTrip(seed) };
+}
+
+/** 리플레이의 전제: 이 엔진에서도 '스냅샷 → 복원 → 이어 돌리기' = '한 번에 돌리기' (구역 1 물결, 300틱에서 찍고 600틱까지) */
+function snapshotRoundTrip(seed: number) {
+  const inputs = scriptedInputs(seed, 600);
+  const a = createSim(ZONE1, seed);
+  hordeStart(a);
+  let snap: ReturnType<typeof takeSnapshot> | null = null;
+  inputs.forEach((f, i) => {
+    if (i === 300) snap = takeSnapshot(a);
+    stepSim(a, f);
+    a.events.length = 0;
+  });
+  const b = restoreSim(ZONE1, seed, 'human', snap!);
+  for (let i = 300; i < 600; i++) {
+    stepSim(b, inputs[i]!);
+    b.events.length = 0;
+  }
+  const out = { continuous: hashSim(a), restored: hashSim(b) };
+  disposeSim(a);
+  disposeSim(b);
+  return out;
 }
 
 /** 캐릭터 이동 클립 분석 결과 (무미끄럼 속도·발 위상) — 에셋 교체 시 확인용 */

@@ -26,7 +26,7 @@ export function giveStartingTorch(sim: Sim) {
   p.heldTorch = newTorch(sim, 'held', x, y, z).id;
 }
 
-function removeTorch(sim: Sim, t: TorchItem) {
+export function removeTorch(sim: Sim, t: TorchItem) {
   if (t.body) sim.world.removeRigidBody(t.body);
   sim.torches.splice(sim.torches.indexOf(t), 1);
 }

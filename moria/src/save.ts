@@ -7,20 +7,29 @@ import type { Progress } from './sim/interact';
  * 읽을 때는 버전 확인 + 모양 검사를 하고, 틀리면 버린다 (새 게임). 저장소가 막힌 환경(시크릿 창 등)에서는 조용히 실패.
  */
 const KEY = 'moria.save';
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export type SaveData = { v: typeof SAVE_VERSION; classId: ClassId; progress: Progress };
 
 const ints = (x: unknown): x is number[] => Array.isArray(x) && x.every((n) => Number.isInteger(n));
 
-/** 옛 버전 → 현재 버전. 버전이 오르면 여기에 단계를 더한다 */
-function migrate(raw: unknown): SaveData | null {
+/** 옛 버전 → 현재 버전. 한 단계씩 올린다 (v1 → v2: 보스 처치 목록 추가) */
+export function migrate(raw: unknown): SaveData | null {
   if (typeof raw !== 'object' || raw === null) return null;
-  const r = raw as Partial<SaveData>;
+  const r = { ...(raw as Record<string, unknown>) } as { v?: unknown; classId?: unknown; progress?: Record<string, unknown> };
+  if (r.v === 1 && r.progress) {
+    r.progress = { ...r.progress, bossesDown: [] };
+    r.v = 2;
+  }
   if (r.v !== SAVE_VERSION) return null;
   const p = r.progress;
-  if (!['human', 'dwarf', 'elf'].includes(r.classId as string) || !p || !ints(p.doorsOpen) || !ints(p.lit) || !Number.isInteger(p.checkpoint)) return null;
-  return { v: SAVE_VERSION, classId: r.classId as ClassId, progress: { doorsOpen: p.doorsOpen, lit: p.lit, checkpoint: p.checkpoint } };
+  if (!['human', 'dwarf', 'elf'].includes(r.classId as string) || !p) return null;
+  if (!ints(p.doorsOpen) || !ints(p.lit) || !Number.isInteger(p.checkpoint) || !ints(p.bossesDown)) return null;
+  return {
+    v: SAVE_VERSION,
+    classId: r.classId as ClassId,
+    progress: { doorsOpen: p.doorsOpen, lit: p.lit, checkpoint: p.checkpoint as number, bossesDown: p.bossesDown },
+  };
 }
 
 export function loadSave(): SaveData | null {

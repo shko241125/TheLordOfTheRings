@@ -26,6 +26,11 @@ const CLIPS: Record<Slot, string> = {
   hit: 'Hit_Chest', parried: 'Hit_Head', death: 'Death01',
 };
 
+/** 스키닝으로 그릴 최대 수 (나머지는 인스턴싱) */
+export const SKINNED_MAX = 8;
+/** 인스턴싱으로 대신 그릴 고블린 (발밑 위치) */
+export type Impostor = { key: number; x: number; y: number; z: number; facing: number; speed: number };
+
 type One = {
   e: Enemy;
   root: Group;
@@ -161,14 +166,14 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
    */
   const sync = () => {
     for (const e of sim.enemies) {
-      if (byId.has(e.id)) continue;
+      if (e.kind !== 'goblin' || byId.has(e.id)) continue; // 트롤은 render/troll.ts
       const g = build(e);
       list.push(g);
       byId.set(e.id, g);
     }
     for (let i = list.length - 1; i >= 0; i--) {
       const g = list[i]!;
-      if (sim.enemies.includes(g.e)) continue;
+      if (sim.enemies.includes(g.e)) continue; // (고블린만 목록에 있다)
       g.mixer.stopAllAction();
       g.mixer.uncacheRoot(g.model);
       g.root.removeFromParent();
@@ -181,6 +186,7 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
   sync();
   const drop = GOBLIN_CAPSULE.half + GOBLIN_CAPSULE.radius + KCC_OFFSET;
   const v = new Vector3();
+  const near: One[] = [];
   let clock = 0;
 
   return {
@@ -205,18 +211,36 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
     },
     /** 돌의 감각: 음파가 지나간 반경 안에서 움직이는 고블린을 청백색으로 드러낸다 (멈춰 있으면 안 보인다) */
     sense: { x: 0, z: 0, radius: 0, strength: 0 },
-    /** seen: 그 자리가 지금 보이는 방인가 (포털 컬링 결과). 안 보이면 그리지도, 애니메이션을 돌리지도 않는다 */
-    update(dt: number, alpha: number, camera: Camera, seen: (x: number, y: number, z: number) => boolean = () => true) {
+    /**
+     * seen: 그 자리가 지금 보이는 방인가 (포털 컬링 결과). 안 보이면 그리지도, 애니메이션을 돌리지도 않는다.
+     * impostors: 렌더 LOD — 가까운 SKINNED_MAX마리만 스키닝으로 그리고, 나머지 살아 있는 고블린은 이 목록에 넣어
+     * 무리와 같은 인스턴싱 메시(VAT)로 그린다 (물결 때 승격한 수십 마리가 draw call을 폭증시키지 않게). 멀리 있는 시체는 숨긴다.
+     */
+    update(
+      dt: number, alpha: number, camera: Camera, seen: (x: number, y: number, z: number) => boolean = () => true,
+      impostors: Impostor[] | null = null,
+      maxSkinned = SKINNED_MAX,
+    ) {
       clock += dt;
+      // 가까운 순서 (카메라 기준) — 앞 SKINNED_MAX마리만 스키닝
+      near.length = 0;
+      for (const g of list) near.push(g);
+      const cx = camera.position.x, cz = camera.position.z;
+      const d2 = (g: One) => (g.curr.x - cx) ** 2 + (g.curr.z - cz) ** 2;
+      if (impostors && list.length > maxSkinned) near.sort((a, b) => d2(a) - d2(b));
+      const skinned = new Set(impostors ? near.slice(0, maxSkinned) : near);
       for (const g of list) {
         const e = g.e;
         // 위치·방향 보간
         const x = g.prev.x + (g.curr.x - g.prev.x) * alpha;
         const y = g.prev.y + (g.curr.y - g.prev.y) * alpha;
         const z = g.prev.z + (g.curr.z - g.prev.z) * alpha;
-        g.root.visible = seen(x, y, z);
+        g.root.visible = seen(x, y, z) && skinned.has(g);
         if (!g.root.visible) {
           g.mark.style.display = 'none';
+          if (impostors && e.ai !== 'dead' && seen(x, y, z)) {
+            impostors.push({ key: -1 - e.id, x, y: y - drop, z, facing: g.prev.f + angleDiff(g.prev.f, g.curr.f) * alpha, speed: Math.hypot(e.vx, e.vz) });
+          }
           continue;
         }
         g.root.position.set(x, y - drop, z);

@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { angleDiff, dAtan2Angle } from '../core/trig';
 import { createEnemy } from './enemy';
+import { spawnHorde } from './horde';
 import { pathTo } from './nav';
 import { lightAt } from './perception';
 import { G_LEVEL, groups, type DirectorState, type Sim, type SimLight, type V3 } from './types';
@@ -65,7 +66,7 @@ export function spawnAllowed(sim: Sim, pt: V3, lights: readonly SimLight[]): boo
   // ③ 경로 거리 (직선이 이미 가까우면 경로도 가깝다 → 비싼 경로 탐색 생략)
   const dx = pt[0] - me.x, dz = pt[2] - me.z;
   if (dx * dx + dz * dz < SPAWN_MIN_PATH * SPAWN_MIN_PATH * 0.25) return false;
-  const path = pathTo(sim.nav, [me.x, me.y, me.z], pt);
+  const path = pathTo(sim.nav, [me.x, me.y, me.z], pt, sim.navBlock.filter);
   if (path.length === 0 || pathLength([me.x, me.y, me.z], path) < SPAWN_MIN_PATH) return false;
   // ① 시야 밖: 카메라가 보는 방향 ±70° 안이고 시선이 트였으면 '보이는 곳'
   const off = Math.abs(angleDiff(sim.director.cameraYaw, dAtan2Angle(-dx, -dz)));
@@ -85,7 +86,10 @@ function spawnWave(sim: Sim, lights: readonly SimLight[]): boolean {
   if (room <= 0) return false;
   const ok = sim.spawnPoints.filter((p) => spawnAllowed(sim, p, lights));
   if (ok.length === 0) return false;
-  const at = ok[sim.rng.int(ok.length)]!;
+  // 서 있는 붕괴 기둥 14m 안의 굴 입구를 먼저 고른다 — 물결이 기둥 옆을 지나야 무너뜨려 막을 기회가 생긴다 (계획서 M3 6번)
+  const nearCrack = ok.filter((p) => sim.collapses.some((c) => c.state === 'standing' && (c.x - p[0]) ** 2 + (c.z - p[2]) ** 2 < 14 * 14));
+  const pool = nearCrack.length ? nearCrack : ok;
+  const at = pool[sim.rng.int(pool.length)]!;
   // 한 굴 입구에서 줄지어 나온다 (0.9m 간격). 입구 중앙만 검사하면 줄 끝의 한 마리가 기둥 옆으로 보일 수 있다
   // (테스트로 발견) → 한 마리씩 규칙을 다시 확인하고 통과한 자리에만 세운다
   const spots: V3[] = [];
@@ -103,7 +107,9 @@ function spawnWave(sim: Sim, lights: readonly SimLight[]): boolean {
     sim.enemies.push(e);
     sim.director.wave.push(e.id);
   }
-  sim.events.push({ type: 'wave', tick: sim.tick, count: spots.length });
+  // 물결: 같은 굴 입구에서 무리가 뒤따라 쏟아진다
+  const horde = sim.horde ? spawnHorde(sim, at, sim.horde.size) : 0;
+  sim.events.push({ type: 'wave', tick: sim.tick, count: spots.length + horde });
   return true;
 }
 
@@ -130,7 +136,8 @@ export function stepDirector(sim: Sim, lights: readonly SimLight[]) {
     return (t.x - me.x) ** 2 + (t.z - me.z) ** 2 < CALM_RADIUS * CALM_RADIUS;
   });
   if (!near) d.intensity *= DECAY_PER_TICK;
-  const waveAlive = d.wave.filter((id) => sim.enemies.some((e) => e.id === id && e.ai !== 'dead')).length;
+  // 이번 물결의 살아 있는 수 = 진짜 고블린 + 아직 무리인 것
+  const waveAlive = d.wave.filter((id) => sim.enemies.some((e) => e.id === id && e.ai !== 'dead')).length + (sim.horde?.agents.length ?? 0);
 
   switch (d.phase) {
     case 'relax':

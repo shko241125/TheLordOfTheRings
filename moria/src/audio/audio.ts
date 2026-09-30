@@ -197,6 +197,26 @@ export function createAudio() {
         // 돌문이 끌리는 낮은 울림
         burst(70, 0.6, 2.6, 0.9, 40);
         tone(46, 2.4, 0.35);
+      } else if (ev.type === 'slam') {
+        // 땅이 울린다
+        tone(38, 0.9, 0.9);
+        burst(160, 0.6, 0.7, 1, 50);
+      } else if (ev.type === 'pillar') {
+        burst(400, 0.5, 1.8, 0.9, 80); // 돌이 무너져 내리는 소리
+        tone(52, 1.2, 0.5);
+      } else if (ev.type === 'crack') {
+        burst(260, 1.2, 0.25, 0.7, 120); // 돌이 갈라지는 둔탁한 소리
+      } else if (ev.type === 'collapse') {
+        if (ev.stage === 'fall') burst(300, 0.5, 1.6, 0.7, 70);
+        else if (ev.stage === 'impact') {
+          tone(34, 1.4, 1);
+          burst(140, 0.5, 1.4, 1, 45);
+        }
+      } else if (ev.type === 'companion') {
+        // 곤도르의 뿔나팔 (두 음이 겹친 긴 저음)
+        tone(147, 1.3, 0.35);
+        tone(220, 1.1, 0.2);
+        burst(900, 1.5, 0.3, 0.4, 400);
       } else if (ev.type === 'rest') {
         burst(600, 0.7, 0.9, ev.first ? 0.6 : 0.25, 200); // 불이 확 붙는 소리
         tone(ev.first ? 196 : 220, 1.6, 0.12);

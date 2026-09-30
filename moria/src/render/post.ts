@@ -41,11 +41,12 @@ export function createPost(renderer: WebGPURenderer, scene: Scene, camera: Persp
   return {
     pipeline,
     /** t: 발동 후 경과 초. 1초 동안 퍼지고 2초 유지, 0.5초에 걸쳐 사라진다 */
-    setSense(x: number, y: number, z: number, maxR: number, t: number) {
+    /** gain: 접근성 설정의 음파 세기 (0 = 음파를 그리지 않는다) */
+    setSense(x: number, y: number, z: number, maxR: number, t: number, gain = 1) {
       origin.value.set(x, y, z);
       maxRadius.value = maxR;
       radius.value = maxR * Math.min(1, t / 1.0);
-      strength.value = t < 0 ? 0 : t < 3 ? 1 : Math.max(0, 1 - (t - 3) / 0.5);
+      strength.value = gain * (t < 0 ? 0 : t < 3 ? 1 : Math.max(0, 1 - (t - 3) / 0.5));
     },
     render() {
       pipeline.render();

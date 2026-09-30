@@ -3,6 +3,9 @@ import { ANGLE_STEPS } from '../core/trig';
 import {
   BTN_CROUCH, BTN_DODGE, BTN_HEAVY, BTN_LIGHT, BTN_LOCK, BTN_PARRY, BTN_SENSE, BTN_SPRINT, BTN_THROW, BTN_TORCH, BTN_WORD, type InputFrame,
 } from './types';
+import { spawnHorde } from './horde';
+import { openDoor } from './interact';
+import type { Sim } from './types';
 
 /**
  * 결정성 검증용 입력 스크립트. 사람이 조작하는 것처럼 30~90틱마다 방향·속도(아날로그 포함)·질주·웅크리기를
@@ -63,4 +66,21 @@ export function zone1Inputs(seed: number, ticks: number): InputFrame[] {
   out.push({ buttons: BTN_WORD, moveX: 0, moveY: 127, yaw: 0 });
   for (let i = 0; i < 240; i++) out.push({ buttons: 0, moveX: 0, moveY: 127, yaw: 0 });
   return out.concat(scriptedInputs(seed, Math.max(0, ticks - out.length)));
+}
+
+/** 트롤전 골든: 문을 연 상태로 트롤 7m 앞(0, 5.2, −38)에서 시작해 scriptedInputs 30초 (깨우기·공격·기둥·유인이 섞인다) */
+export const TROLL_TICKS = 1800;
+export function trollStart(sim: Sim) {
+  sim.doors.forEach((_, i) => openDoor(sim, i));
+  sim.player.body.setTranslation({ x: 0, y: 5.2, z: -38 }, true);
+}
+
+/** 물결 골든: 문을 열고 기둥 홀(0, 5.2, 0)에서 횃불 없이 60마리 무리를 12m 앞에 — 흐름장·빛 경계·승격·강등이 섞인다 */
+export const HORDE_TICKS = 1200;
+export function hordeStart(sim: Sim) {
+  sim.doors.forEach((_, i) => openDoor(sim, i));
+  sim.player.body.setTranslation({ x: 0, y: 5.2, z: 0 }, true);
+  sim.torches.length = 0;
+  sim.player.heldTorch = -1;
+  spawnHorde(sim, [0, 4, -12], 60);
 }

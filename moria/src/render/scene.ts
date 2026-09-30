@@ -62,6 +62,8 @@ export type GameScene = {
   update(focus: Vector3, loose: readonly LooseTorch[], holdingTorch: boolean): void;
   /** 문 여닫이·이실딘 빛·화로 불 (시뮬레이션 상태를 그대로 받는다) */
   props(dt: number, doorsOpen: readonly boolean[], braziersLit: readonly boolean[], player: Vector3): void;
+  /** 트롤이 기둥을 부쉈다: 기둥을 숨기고 돌조각을 흩뿌린다 (렌더 전용 — 조각은 물리와 무관) */
+  breakPillar(solid: number): void;
   /** 포털 컬링: 카메라가 있는 방에서 보이는 통로를 따라 닿는 방만 그린다. 보이는 방 번호 목록을 돌려준다 */
   cull(camera: Camera, player: Vector3): readonly number[];
   /** 그 자리의 방이 지난 cull()에서 보였는가 (방 밖이면 true) */
@@ -103,7 +105,18 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
   roomGroups.forEach((g) => scene.add(g));
   // (방, 재질, 그림자 여부)마다 도형을 하나로 합친다: 구역 1의 도형 150여 개 → 방당 3~5 draw call
   const buckets = new Map<string, { room: number; surface: SurfaceKind; caster: boolean; geos: BufferGeometry[] }>();
-  for (const s of level.solids) {
+  const breakableSet = new Set(level.breakable ?? []);
+  const breakMeshes = new Map<number, Mesh>();
+  for (const [si, s] of level.solids.entries()) {
+    if (breakableSet.has(si) && s.kind === 'cylinder') {
+      // 부서지는 기둥은 합치지 않는다 (따로 숨겨야 한다)
+      const m = new Mesh(track(new CylinderGeometry(s.radius, s.radius, s.halfHeight * 2, 24)), mat(s.surface));
+      m.position.set(s.pos[0], s.pos[1], s.pos[2]);
+      m.castShadow = m.receiveShadow = true;
+      roomGroups[Math.max(0, roomOf(s.pos[0], s.pos[1], s.pos[2]))]!.add(m);
+      breakMeshes.set(si, m);
+      continue;
+    }
     const geo =
       s.kind === 'box' ? new BoxGeometry(s.half[0] * 2, s.half[1] * 2, s.half[2] * 2) : new CylinderGeometry(s.radius, s.radius, s.halfHeight * 2, 24);
     const m = new Matrix4().makeTranslation(s.pos[0], s.pos[1], s.pos[2]);
@@ -263,6 +276,8 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
   const fx = createRng(0xf1a3e);
   const flicker = torchLights.map(() => 1);
   const candidates: Vector3[] = [];
+  const chunkGeo = track(new BoxGeometry(0.3, 0.25, 0.28));
+  const debris: { m: Mesh; vx: number; vy: number; vz: number; floor: number; spin: number; life: number }[] = [];
   const frustum = new Frustum();
   const projView = new Matrix4();
   const portals = level.portals ?? [];
@@ -316,7 +331,53 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
       }
       playerTorch.intensity = holdingTorch ? PLAYER_TORCH_INTENSITY * (0.9 + fx.next() * 0.1) : 0;
     },
+    breakPillar(solid) {
+      const m = breakMeshes.get(solid);
+      if (!m || !m.visible) return;
+      m.visible = false;
+      const s = level.solids[solid]!;
+      if (s.kind !== 'cylinder') return;
+      const base = s.pos[1] - s.halfHeight;
+      for (let i = 0; i < 14; i++) {
+        const c = new Mesh(chunkGeo, mat('stone'));
+        const a = fx.next() * Math.PI * 2;
+        const h = base + 0.5 + fx.next() * s.halfHeight * 1.4;
+        c.position.set(s.pos[0] + Math.cos(a) * s.radius * 0.6, h, s.pos[2] + Math.sin(a) * s.radius * 0.6);
+        c.scale.setScalar(0.5 + fx.next() * 1.3);
+        c.castShadow = true;
+        m.parent!.add(c);
+        const sp = 2 + fx.next() * 4;
+        debris.push({ m: c, vx: Math.cos(a) * sp, vy: fx.next() * 3, vz: Math.sin(a) * sp, floor: base + 0.15 * c.scale.x, spin: fx.next() * 8 - 4, life: 8 });
+      }
+      // 부러진 밑동
+      const stump = new Mesh(track(new CylinderGeometry(s.radius, s.radius * 1.1, 0.9, 12)), mat('stone'));
+      stump.position.set(s.pos[0], base + 0.45, s.pos[2]);
+      stump.castShadow = stump.receiveShadow = true;
+      m.parent!.add(stump);
+    },
     props(dt, doorsOpen, braziersLit, player) {
+      for (let i = debris.length - 1; i >= 0; i--) {
+        const d = debris[i]!;
+        d.life -= dt;
+        d.vy -= 20 * dt;
+        d.m.position.x += d.vx * dt;
+        d.m.position.y += d.vy * dt;
+        d.m.position.z += d.vz * dt;
+        d.m.rotation.x += d.spin * dt;
+        if (d.m.position.y < d.floor) {
+          d.m.position.y = d.floor;
+          d.vy = -d.vy * 0.25;
+          d.vx *= 0.6;
+          d.vz *= 0.6;
+          d.spin *= 0.6;
+        }
+        // ponytail: 조각은 8초 뒤 땅속으로 가라앉혀 지운다 (조각끼리·벽과의 충돌 없음 — 렌더 전용 연출)
+        if (d.life < 1) d.m.position.y = d.floor - (1 - d.life) * 0.5;
+        if (d.life <= 0) {
+          d.m.removeFromParent();
+          debris.splice(i, 1);
+        }
+      }
       for (let i = 0; i < portalDoor.length; i++) portalShut[i] = portalDoor[i]! >= 0 && doors[portalDoor[i]!]!.open === 0;
       for (let i = 0; i < doors.length; i++) {
         const d = doors[i]!;

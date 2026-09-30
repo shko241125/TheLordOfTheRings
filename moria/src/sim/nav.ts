@@ -1,4 +1,4 @@
-import { DEFAULT_QUERY_FILTER, findPath, type NavMesh } from 'navcat';
+import { DEFAULT_QUERY_FILTER, findPath, type NavMesh, type QueryFilter } from 'navcat';
 import { generateSoloNavMesh } from 'navcat/blocks';
 import { dcos, dsin } from '../core/trig';
 import type { Level } from './level';
@@ -101,8 +101,10 @@ export function buildNavMesh(level: Level): NavMesh {
 const HALF_EXTENTS: [number, number, number] = [1, 2, 1];
 
 /** 경로 꼭짓점 목록 (시작점 제외). 실패하면 빈 배열. */
-export function pathTo(nav: NavMesh, from: readonly [number, number, number], to: readonly [number, number, number]): [number, number, number][] {
-  const r = findPath(nav, [from[0], from[1], from[2]], [to[0], to[1], to[2]], HALF_EXTENTS, DEFAULT_QUERY_FILTER);
+export function pathTo(
+  nav: NavMesh, from: readonly [number, number, number], to: readonly [number, number, number], filter: QueryFilter = DEFAULT_QUERY_FILTER,
+): [number, number, number][] {
+  const r = findPath(nav, [from[0], from[1], from[2]], [to[0], to[1], to[2]], HALF_EXTENTS, filter);
   if (!r.success) return [];
   return r.path.slice(1).map((p) => [p.position[0], p.position[1], p.position[2]]);
 }

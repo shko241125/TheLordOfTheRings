@@ -1,7 +1,9 @@
 import { radToAngle } from './trig';
 import {
-  BTN_CROUCH, BTN_DODGE, BTN_HEAVY, BTN_INTERACT, BTN_LIGHT, BTN_LOCK, BTN_PARRY, BTN_SENSE, BTN_SPRINT, BTN_THROW, BTN_TORCH, type InputFrame,
+  BTN_CALL, BTN_CROUCH, BTN_DODGE, BTN_HEAVY, BTN_INTERACT, BTN_LIGHT, BTN_LOCK, BTN_PARRY, BTN_SENSE, BTN_SPRINT, BTN_THROW, BTN_TORCH, type InputFrame,
 } from '../sim/types';
+import { DEFAULT_KEYS, type Action } from '../settings';
+import type { TouchControls } from './touch';
 
 const MOUSE_SENS = 0.0022; // rad/px
 const PAD_LOOK_SPEED = 3.2; // rad/s (오른쪽 스틱 끝까지)
@@ -61,6 +63,11 @@ function tapHold(holdMs: number) {
  */
 export function createInput(target: HTMLElement) {
   const keys = new Set<string>();
+  // 키 배치 (설정에서 바꿀 수 있다) · 마우스 감도·상하 반전
+  let bind: Record<Action, string> = { ...DEFAULT_KEYS };
+  let sens = MOUSE_SENS;
+  let invert = 1;
+  const isParry = (code: string) => code === bind.parry || (bind.parry === 'ShiftLeft' && code === 'ShiftRight');
   const mouse = new Set<number>();
   const view = { yaw: 0, pitch: -0.28 };
   let crouch = false;
@@ -72,26 +79,28 @@ export function createInput(target: HTMLElement) {
   const padPrev = new Map<number, boolean>();
   let lastPadPoll = performance.now();
   let pad: { lx: number; ly: number; buttons: (i: number) => boolean } | null = null;
+  let touch: TouchControls | null = null;
 
   // 글자 입력창(두린의 문)에 치는 동안에는 게임 조작으로 받지 않는다 ('mellon'의 e가 E 상호작용이 되지 않게)
   const typing = (e: Event) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
   const onDown = (e: KeyboardEvent) => {
     if (typing(e)) return;
-    if (e.code === 'Space' || e.code === 'Tab') e.preventDefault(); // 페이지 스크롤·포커스 이동 방지
+    if (e.code === 'Space' || e.code === 'Tab' || e.code === bind.dodge) e.preventDefault(); // 페이지 스크롤·포커스 이동 방지
     if (e.repeat) return;
     keys.add(e.code);
     const now = performance.now();
-    if (e.code === 'KeyC') crouch = !crouch;
-    if (e.code === 'Space') space.down(now);
-    if (e.code === 'KeyF') fKey.down(now);
-    if (e.code === 'KeyV') pulses |= BTN_SENSE;
-    if (e.code === 'KeyE') pulses |= BTN_INTERACT;
+    if (e.code === bind.crouch) crouch = !crouch;
+    if (e.code === bind.dodge) space.down(now);
+    if (e.code === bind.torch) fKey.down(now);
+    if (e.code === bind.sense) pulses |= BTN_SENSE;
+    if (e.code === bind.interact) pulses |= BTN_INTERACT;
+    if (e.code === bind.call) pulses |= BTN_CALL;
   };
   const onUp = (e: KeyboardEvent) => {
     keys.delete(e.code);
     const now = performance.now();
-    if (e.code === 'Space' && space.up(now)) pulses |= BTN_DODGE;
-    if (e.code === 'KeyF' && fKey.up(now)) pulses |= BTN_TORCH;
+    if (e.code === bind.dodge && space.up(now)) pulses |= BTN_DODGE;
+    if (e.code === bind.torch && fKey.up(now)) pulses |= BTN_TORCH;
   };
   const onBlur = () => {
     keys.clear(); // 창 전환 시 키가 눌린 채 남지 않게
@@ -101,8 +110,8 @@ export function createInput(target: HTMLElement) {
   };
   const onMouse = (e: MouseEvent) => {
     if (document.pointerLockElement !== target) return;
-    view.yaw -= e.movementX * MOUSE_SENS;
-    view.pitch = Math.min(PITCH_MAX, Math.max(PITCH_MIN, view.pitch - e.movementY * MOUSE_SENS));
+    view.yaw -= e.movementX * sens;
+    view.pitch = Math.min(PITCH_MAX, Math.max(PITCH_MIN, view.pitch - e.movementY * sens * invert));
   };
   const onMouseDown = (e: MouseEvent) => {
     if (document.pointerLockElement !== target) return;
@@ -148,6 +157,10 @@ export function createInput(target: HTMLElement) {
     if (edge(11)) pulses |= BTN_LOCK;
     if (edge(13)) pulses |= BTN_SENSE; // 십자키 아래
     if (edge(0)) pulses |= BTN_INTERACT; // A
+    // LT + RT 함께: 둘 중 늦게 눌린 쪽의 순간에 한 번
+    const both = pressed(6) && pressed(7);
+    if (both && !(padPrev.get(-1) ?? false)) pulses |= BTN_CALL;
+    padPrev.set(-1, both);
     return { lx, ly, buttons: pressed };
   }
 
@@ -163,11 +176,17 @@ export function createInput(target: HTMLElement) {
     },
     sample(): InputFrame {
       const now = performance.now();
-      let x = axis('KeyA', 'KeyD');
-      let y = axis('KeyS', 'KeyW');
+      let x = axis(bind.left, bind.right);
+      let y = axis(bind.back, bind.forward);
       if (pad && (pad.lx !== 0 || pad.ly !== 0)) {
         x = pad.lx;
         y = -pad.ly;
+      }
+      // 터치: 가상 조이스틱이 기울어 있으면 그 값, 버튼은 합친다
+      const ts = touch?.sample();
+      if (ts && (ts.moveX !== 0 || ts.moveY !== 0)) {
+        x = ts.moveX / 127;
+        y = ts.moveY / 127;
       }
       const sprint = space.held(now) || padB.held(now);
       if (sprint && crouch) crouch = false; // 질주하면 일어선다
@@ -177,8 +196,9 @@ export function createInput(target: HTMLElement) {
         b(crouch, BTN_CROUCH) |
         b(mouse.has(0) || !!pad?.buttons(2), BTN_LIGHT) |
         b(mouse.has(2) || !!pad?.buttons(3), BTN_HEAVY) |
-        b(keys.has('ShiftLeft') || keys.has('ShiftRight') || !!pad?.buttons(4), BTN_PARRY) |
-        pulses;
+        b([...keys].some(isParry) || !!pad?.buttons(4), BTN_PARRY) |
+        pulses |
+        (ts?.buttons ?? 0);
       pulses = 0;
       return {
         buttons,
@@ -186,6 +206,17 @@ export function createInput(target: HTMLElement) {
         moveY: Math.round(Math.max(-1, Math.min(1, y)) * 127),
         yaw: radToAngle(view.yaw),
       };
+    },
+    /** 터치 조작을 붙인다 (모바일) */
+    attachTouch(t: TouchControls) {
+      touch = t;
+    },
+    /** 설정 적용: 키 배치·마우스 감도 배율·상하 반전 */
+    configure(keysMap: Record<Action, string>, mouseSens: number, invertY: boolean) {
+      bind = { ...keysMap };
+      sens = MOUSE_SENS * mouseSens;
+      invert = invertY ? -1 : 1;
+      onBlur(); // 바뀐 키가 눌린 채 남지 않게
     },
     /** UI가 한 틱짜리 버튼을 넣는다 (수수께끼 정답 → BTN_WORD) */
     pulse(bits: number) {

@@ -11,8 +11,12 @@ import { buildNavMesh } from './nav';
 import { allLights, emitNoise, lightAt, pruneNoise } from './perception';
 import { stepPlayer } from './player';
 import { stepInteract } from './interact';
+import { TROLL_CAPSULE, bossAwake } from './troll';
+import { createHorde, stepHorde } from './horde';
+import { createCollapses, createNavBlock, damageCollapse, stepCollapses } from './collapse';
+import { callCompanion } from './companion';
 import { giveStartingTorch, updateTorches } from './torch';
-import { BTN_DODGE, BTN_LIGHT, G_CHAR, G_LEVEL, groups, type InputFrame, type Sim, type SimLight, type V3 } from './types';
+import { BTN_CALL, BTN_DODGE, BTN_LIGHT, G_CHAR, G_LEVEL, groups, type InputFrame, type Sim, type SimLight, type V3 } from './types';
 
 export * from './types';
 
@@ -32,8 +36,10 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
   const world = new RAPIER.World({ x: 0, y: -20, z: 0 });
   world.timestep = DT;
 
-  // 레벨 바디: 배열 순서대로 생성 (결정성 규칙 4)
-  for (const s of level.solids) {
+  // 레벨 바디: 배열 순서대로 생성 (결정성 규칙 4). 부서지는 기둥은 바디를 기억해 둔다
+  const breakable = new Set(level.breakable ?? []);
+  const pillars: Sim['pillars'] = [];
+  for (const [i, s] of level.solids.entries()) {
     const desc = RAPIER.RigidBodyDesc.fixed().setTranslation(s.pos[0], s.pos[1], s.pos[2]);
     if (s.kind === 'box' && s.rot) desc.setRotation({ x: s.rot[0], y: s.rot[1], z: s.rot[2], w: s.rot[3] });
     const body = world.createRigidBody(desc);
@@ -42,6 +48,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
         ? RAPIER.ColliderDesc.cuboid(s.half[0], s.half[1], s.half[2])
         : RAPIER.ColliderDesc.cylinder(s.halfHeight, s.radius);
     world.createCollider(col.setCollisionGroups(groups(G_LEVEL, 0xffff)), body);
+    if (breakable.has(i) && s.kind === 'cylinder') pillars.push({ solid: i, x: s.pos[0], z: s.pos[2], r: s.radius, body });
   }
 
   // 문: 레벨 바디 다음 순서
@@ -58,6 +65,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
     body,
   );
 
+  const nav = buildNavMesh(level);
   const sim: Sim = {
     tick: 0,
     world,
@@ -70,11 +78,11 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
       action: 'free', actionTick: 0, attack: null, combo: 0, comboQueued: false,
       heavyCharge: 0, charging: false, hitSet: new Set(), buffer: null, prevButtons: 0,
       lockTarget: -1, riposteUntil: -1, dodgeDirX: 0, dodgeDirZ: 0,
-      heldTorch: -1, spareTorches: 2, senseReadyAt: 0,
+      heldTorch: -1, spareTorches: 2, senseReadyAt: 0, companion: 0,
     },
     enemies: [],
     enemyController: makeController(world),
-    nav: buildNavMesh(level),
+    nav,
     staticLights: level.torches.map(([x, y, z]) => ({ x, y, z, intensity: 0.9, range: 7 })),
     torches: [],
     nextTorchId: 0,
@@ -84,12 +92,25 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
     events: [],
     director: createDirector(),
     spawnPoints: (level.spawnPoints ?? []).map((p) => [p[0], p[1], p[2]] as [number, number, number]),
-    nextEnemyId: level.enemies?.length ?? 0,
+    nextEnemyId: (level.enemies?.length ?? 0) + (level.bosses?.length ?? 0),
     doors,
     braziers: (level.braziers ?? []).map(([x, y, z]) => ({ x, y, z, lit: false })),
     checkpoint: -1,
+    pillars,
+    bosses: [],
+    horde: createHorde(level, nav),
+    collapses: [],
+    navBlock: createNavBlock(),
+    classId,
   };
+  // 붕괴 기둥: 레벨·문 바디 다음, 플레이어보다 뒤 — 생성 순서 고정 (결정성 규칙 4)
+  sim.collapses.push(...createCollapses(sim, level));
   (level.enemies ?? []).forEach((e, i) => sim.enemies.push(createEnemy(sim, i, [...e.pos], e.patrol.map((p) => [...p] as [number, number, number]))));
+  (level.bosses ?? []).forEach((b, i) => {
+    const id = (level.enemies?.length ?? 0) + i;
+    sim.enemies.push(createEnemy(sim, id, [...b.pos], [[...b.pos]], b.kind));
+    sim.bosses.push(id);
+  });
   giveStartingTorch(sim);
   return sim;
 }
@@ -113,7 +134,8 @@ function resolvePlayerAttack(sim: Sim, lights: readonly SimLight[]) {
   for (const e of sim.enemies) {
     if (e.ai === 'dead' || p.hitSet.has(e.id)) continue;
     const t = e.body.translation();
-    if (!inArc(me.x, me.y, me.z, p.facing, t.x, t.y, t.z, 0.3, a.reach, a.halfArc)) continue;
+    const radius = e.kind === 'troll' ? TROLL_CAPSULE.radius : 0.3;
+    if (!inArc(me.x, me.y, me.z, p.facing, t.x, t.y, t.z, radius, a.reach, a.halfArc)) continue;
     p.hitSet.add(e.id);
     const riposte = sim.tick < p.riposteUntil;
     const dark = darkMultiplier(sim, lights);
@@ -123,6 +145,31 @@ function resolvePlayerAttack(sim: Sim, lights: readonly SimLight[]) {
     sim.hitstop = Math.max(sim.hitstop, riposte ? a.hitstop + 4 : a.hitstop);
     emitNoise(sim, t.x, t.y, t.z, 0.8, 10, 20);
     sim.events.push({ type: 'hit', tick: sim.tick, target: e.id, x: t.x, y: t.y + 0.4, z: t.z, heavy: a.id === 'heavy' || riposte, dark });
+  }
+  // 금 간 기둥: 칼에 닿으면 금이 간다 (판정 구간마다 한 번 — hitSet에 음수 번호로 기록)
+  for (let i = 0; i < sim.collapses.length; i++) {
+    const c = sim.collapses[i]!;
+    const key = -100 - i;
+    if (c.state !== 'standing' || p.hitSet.has(key)) continue;
+    if (!inArc(me.x, me.y, me.z, p.facing, c.x, me.y, c.z, c.radius, a.reach, a.halfArc)) continue;
+    p.hitSet.add(key);
+    damageCollapse(sim, i, a.damage);
+    sim.hitstop = Math.max(sim.hitstop, a.hitstop);
+  }
+  // 무리(물리 없는 점)도 칼에 닿으면 쓰러진다 — 한 번에 하나씩, 판정 구간마다 최대 3마리
+  const h = sim.horde;
+  if (h && h.agents.length) {
+    let cut = 0;
+    h.agents = h.agents.filter((g) => {
+      if (cut >= 3 || !inArc(me.x, me.y, me.z, p.facing, g.x, g.y + 0.8, g.z, 0.3, a.reach, a.halfArc)) return true;
+      cut++;
+      sim.events.push({ type: 'hit', tick: sim.tick, target: -1, x: g.x, y: g.y + 1, z: g.z, heavy: a.id === 'heavy', dark: 1 });
+      return false;
+    });
+    if (cut) {
+      sim.hitstop = Math.max(sim.hitstop, a.hitstop);
+      p.companion = Math.min(100, p.companion + cut);
+    }
   }
 }
 
@@ -140,10 +187,14 @@ export function stepSim(sim: Sim, input: InputFrame): void {
   const pressed = input.buttons & ~sim.player.prevButtons; // stepPlayer가 prevButtons를 갱신하기 전에
   stepPlayer(sim, input);
   stepInteract(sim, pressed);
+  if ((pressed & BTN_CALL) !== 0) callCompanion(sim, sim.classId);
   resolvePlayerAttack(sim, lights);
   stepEnemies(sim, lights);
+  stepHorde(sim, lights);
+  stepCollapses(sim);
   // 문이 닫힌 동안(서문 밖)은 디렉터가 쉰다 — 내비메시는 문을 열린 상태로 보므로 물결이 문에 막혀 버린다
-  if (sim.doors.every((d) => d.open)) stepDirector(sim, lights);
+  // 보스전 중에도 쉰다 (L4D의 보스 이벤트처럼 물결과 겹치지 않게)
+  if (sim.doors.every((d) => d.open) && !bossAwake(sim)) stepDirector(sim, lights);
   updateTorches(sim);
   pruneNoise(sim);
   sim.world.step();
@@ -157,6 +208,8 @@ function latchDuringHitstop(sim: Sim, input: InputFrame) {
   // 콤보 입력은 히트스톱 중에 들어오는 경우가 많다 → 예약으로 받는다
   if ((pressed & BTN_LIGHT) !== 0 && p.action === 'attack' && p.attack?.id.startsWith('light')) p.comboQueued = true;
   else if ((pressed & BTN_DODGE) !== 0) p.buffer = { kind: 'dodge', ticks: INPUT_BUFFER_TICKS };
+  // 동료 호출은 맞는 순간(히트스톱)에 가장 많이 눌린다 → 버리지 않고 바로 부른다
+  if ((pressed & BTN_CALL) !== 0) callCompanion(sim, sim.classId);
 }
 
 const scratch = new DataView(new ArrayBuffer(8));
@@ -177,7 +230,23 @@ export function hashSim(sim: Sim): number {
   h = mix(h, sim.tick, sim.hitstop, sim.tokens, sim.noise.length, sim.torches.length);
   h = mix(h, p.vx, p.vy, p.vz, p.facing, p.grounded ? 1 : 0, p.crouching ? 1 : 0, p.airTicks, p.landedTick);
   h = mix(h, p.hp, p.stamina, ['free', 'attack', 'dodge', 'parry', 'stagger', 'dead'].indexOf(p.action), p.actionTick, p.combo, p.heavyCharge, p.lockTarget, p.heldTorch, p.spareTorches, p.senseReadyAt);
-  for (const e of sim.enemies) h = mix(h, e.id, e.hp, e.awareness, e.facing, e.vx, e.vz, e.aiTick, e.swingTick, e.hasToken ? 1 : 0, e.cooldownUntil);
+  for (const e of sim.enemies) {
+    h = mix(h, e.id, e.hp, e.awareness, e.facing, e.vx, e.vz, e.aiTick, e.swingTick, e.hasToken ? 1 : 0, e.cooldownUntil);
+    if (e.kind === 'troll') h = mix(h, ['', 'slam', 'sweep'].indexOf(e.move), e.aimX, e.aimZ);
+  }
+  for (const p of sim.pillars) h = mix(h, p.body ? 1 : 0);
+  h = mix(h, p.companion);
+  for (const c of sim.collapses) {
+    h = mix(h, c.hp, ['standing', 'falling', 'down'].indexOf(c.state), c.tick);
+    for (const b of c.chunks) {
+      const t = b.translation();
+      h = mix(h, t.x, t.y, t.z);
+    }
+  }
+  if (sim.horde && (sim.horde.agents.length || sim.horde.nextId)) {
+    h = mix(h, sim.horde.agents.length, sim.horde.nextId);
+    for (const a of sim.horde.agents) h = mix(h, a.id, a.x, a.y, a.z, a.vx, a.vz, a.facing);
+  }
   for (const t of sim.torches) h = mix(h, t.id, t.x, t.y, t.z, t.burn);
   const d = sim.director;
   // 문·화로가 없는 레벨(시험 방)은 해시에 섞지 않는다 → 기존 골든 해시 유지

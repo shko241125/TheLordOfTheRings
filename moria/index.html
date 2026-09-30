@@ -9,15 +9,16 @@
       html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
       canvas { display: block; width: 100vw; height: 100vh; }
       #hud { position: fixed; left: 12px; bottom: 10px; font: 12px/1.4 ui-monospace, monospace; color: #9a8f7a; pointer-events: none; white-space: pre; }
-      #start { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.75); color: #d8cbb0; font: 18px/1.6 serif; cursor: pointer; text-align: center; }
+      #start { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0,0,0,.75); color: #d8cbb0; font: 18px/1.6 serif; cursor: pointer; text-align: center; }
       #start small { display: block; font-size: 13px; color: #8a7f6a; }
-      #error { position: fixed; inset: 0; display: none; place-items: center; background: #000; color: #e0a090; font: 14px/1.6 ui-monospace, monospace; padding: 24px; white-space: pre-wrap; }
+      #error { position: fixed; inset: 0; z-index: 30; display: none; place-items: center; background: #000; color: #e0a090; font: 14px/1.6 ui-monospace, monospace; padding: 24px; white-space: pre-wrap; }
     </style>
   </head>
   <body>
     <canvas id="game"></canvas>
     <div id="hud"></div>
-    <div id="start">클릭해서 모리아로 들어가기<small>WASD 이동 · 좌클릭 공격 · 우클릭(누르기) 강공격 · Space 회피(길게: 질주) · Shift 패링<br>휠 클릭 락온 · F 횃불 내려놓기/줍기(길게: 던지기) · V 돌의 감각 · E 상호작용 · C 웅크리기 · Esc 해제 (게임패드 지원)</small></div>
+    <!-- 부팅 중에는 로딩 문구 (클릭해도 아직 시작할 수 없다) — main이 준비되면 조작 안내로 바꾼다 -->
+    <div id="start">모리아로 내려가는 중…<small id="tip">어둠 속에서 친 일격은 더 깊이 박힌다. 대신 어둠은 적도 숨긴다.</small></div>
     <div id="error"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

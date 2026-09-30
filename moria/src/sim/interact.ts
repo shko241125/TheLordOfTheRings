@@ -66,13 +66,14 @@ export function stepInteract(sim: Sim, pressed: number) {
 }
 
 /** 저장에서 되살릴 진행 상태 */
-export type Progress = { doorsOpen: number[]; lit: number[]; checkpoint: number };
+export type Progress = { doorsOpen: number[]; lit: number[]; checkpoint: number; /** 쓰러뜨린 보스 (레벨 bosses 번호) */ bossesDown: number[] };
 
 export function progressOf(sim: Sim): Progress {
   return {
     doorsOpen: sim.doors.flatMap((d, i) => (d.open ? [i] : [])),
     lit: sim.braziers.flatMap((b, i) => (b.lit ? [i] : [])),
     checkpoint: sim.checkpoint,
+    bossesDown: sim.bosses.flatMap((id, i) => (sim.enemies.find((e) => e.id === id)?.ai === 'dead' ? [i] : [])),
   };
 }
 
@@ -80,6 +81,15 @@ export function progressOf(sim: Sim): Progress {
 export function restoreProgress(sim: Sim, pr: Progress) {
   for (const i of pr.doorsOpen) if (sim.doors[i]) openDoor(sim, i);
   for (const i of pr.lit) if (sim.braziers[i]) sim.braziers[i]!.lit = true;
+  for (const i of pr.bossesDown) {
+    const e = sim.enemies.find((x) => x.id === sim.bosses[i]);
+    if (!e) continue;
+    // 조용히 쓰러진 상태로 (사건·긴장도 없이)
+    e.hp = 0;
+    e.ai = 'dead';
+    e.aiTick = 10_000;
+    e.collider.setCollisionGroups(0);
+  }
   const b = sim.braziers[pr.checkpoint];
   if (!b) return;
   sim.checkpoint = pr.checkpoint;

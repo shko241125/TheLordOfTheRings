@@ -32,6 +32,7 @@ export const BTN_SENSE = 1 << 9; // V: 돌의 감각
 export const BTN_INTERACT = 1 << 10; // E: 화로 밝히기·쉬기
 /** 두린의 문 암호가 맞았다 (수수께끼 UI가 판정해 한 틱 켠다 — 입력으로 기록되므로 리플레이가 재현한다) */
 export const BTN_WORD = 1 << 11;
+export const BTN_CALL = 1 << 12; // Q: 동료 호출
 
 export type ActionKind = 'free' | 'attack' | 'dodge' | 'parry' | 'stagger' | 'dead';
 
@@ -100,12 +101,19 @@ export type PlayerState = Mover & {
   spareTorches: number;
   /** 돌의 감각을 다시 쓸 수 있는 틱 */
   senseReadyAt: number;
+  /** 동료 호출 게이지 0..100 */
+  companion: number;
 };
 
 export type EnemyAI = 'patrol' | 'suspicious' | 'chase' | 'engage' | 'attack' | 'stagger' | 'dead';
 
+export type EnemyKind = 'goblin' | 'troll';
+/** 트롤 기술 ('' = 없음) */
+export type TrollMove = '' | 'slam' | 'sweep';
+
 export type Enemy = Mover & {
   readonly id: number;
+  readonly kind: EnemyKind;
   hp: number;
   ai: EnemyAI;
   aiTick: number;
@@ -126,7 +134,19 @@ export type Enemy = Mover & {
   swingTick: number;
   /** 이번 휘청임 길이 (맞음 14틱 / 패링당함 50틱) */
   staggerLen: number;
+  // --- 트롤 전용 ---
+  move: TrollMove;
+  /** 내려찍기 지점 (예비 동작 앞 2/3 동안 따라오다 고정된다) */
+  aimX: number;
+  aimZ: number;
+  /** 잠든 자리 (너무 멀리 끌려가면 돌아가 회복한다) */
+  readonly home: V3;
+  /** 무리(horde)에서 승격한 고블린 — 멀어지면 다시 무리로 강등될 수 있다 */
+  fromHorde: boolean;
 };
+
+/** 부서지는 기둥 (트롤 내려찍기) */
+export type Pillar = { readonly solid: number; readonly x: number; readonly z: number; readonly r: number; body: RAPIER.RigidBody | null };
 
 /** 열리는 문 (두린의 문). 닫힌 동안만 물리 바디가 있다 */
 export type Door = { readonly pos: V3; readonly half: V3; body: RAPIER.RigidBody | null; open: boolean };
@@ -173,7 +193,7 @@ export type DirectorState = {
 /** 렌더가 소비하는 일회성 사건 (시뮬레이션은 읽지 않는다 → 결정성과 무관) */
 export type SimEvent =
   | { type: 'hit'; tick: number; target: number; x: number; y: number; z: number; heavy: boolean; dark: number }
-  | { type: 'playerHit'; tick: number; damage: number }
+  | { type: 'playerHit'; tick: number; damage: number; source: 'goblin' | 'troll' | 'collapse' }
   | { type: 'parry'; tick: number; enemy: number }
   | { type: 'death'; tick: number; enemy: number }
   | { type: 'swing'; tick: number; actor: number; attack: string }
@@ -182,6 +202,11 @@ export type SimEvent =
   | { type: 'wave'; tick: number; count: number }
   | { type: 'sense'; tick: number; x: number; y: number; z: number; radius: number }
   | { type: 'door'; tick: number; door: number }
+  | { type: 'slam'; tick: number; enemy: number; x: number; y: number; z: number }
+  | { type: 'pillar'; tick: number; solid: number; x: number; z: number }
+  | { type: 'crack'; tick: number; index: number; hp: number }
+  | { type: 'collapse'; tick: number; index: number; stage: 'fall' | 'impact' | 'settled' }
+  | { type: 'companion'; tick: number; who: string; line: string; x: number; y: number; z: number; facing: number; radius: number; halfArc: number; killed: number }
   | { type: 'rest'; tick: number; brazier: number; first: boolean };
 
 export type Sim = {
@@ -209,6 +234,16 @@ export type Sim = {
   readonly braziers: Brazier[];
   /** 마지막으로 쉰 화로 (−1 = 없음) */
   checkpoint: number;
+  readonly pillars: Pillar[];
+  /** 보스 적 id (레벨의 bosses 순서) */
+  readonly bosses: number[];
+  /** 고블린 물결 (레벨에 horde 설정이 있을 때만) */
+  readonly horde: import('./horde').Horde | null;
+  /** 무너지는 기둥 (레벨 collapses 순서) */
+  readonly collapses: import('./collapse').Collapse[];
+  /** 잔해가 막은 내비메시 폴리곤을 빼는 경로 필터 */
+  readonly navBlock: import('./collapse').NavBlock;
+  readonly classId: import('./classes').ClassId;
 };
 
 /** 충돌 그룹: (소속 << 16) | 필터 */

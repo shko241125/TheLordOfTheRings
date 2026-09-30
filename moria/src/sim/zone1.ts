@@ -75,6 +75,9 @@ const HALL: Room = { name: '입구 홀', min: [-10, 0, 24], max: [10, 8, 40] };
 const STAIRS: Room = { name: '거대 계단', min: [-3, 0, 4], max: [3, 9, 24] };
 const PILLARS: Room = { name: '기둥 홀', min: [-16, 4, -26], max: [16, 14, 4] };
 const TROLL: Room = { name: '트롤 굴', min: [-12, 4, -50], max: [12, 16, -26] };
+// 기둥 홀 양옆의 고블린 굴 (폭 3m, 안쪽 2m) — 물결이 나오는 곳. 입구마다 금 간 기둥이 있다
+const WEST: Room = { name: '서쪽 굴', min: [-30, 4, -13.5], max: [-16, 8, -10.5] };
+const EAST: Room = { name: '동쪽 굴', min: [16, 4, -13.5], max: [30, 8, -10.5] };
 
 const DOOR_W = 4;
 const DOOR_H = 5;
@@ -90,6 +93,8 @@ const portals: Portal[] = [
   { a: 1, b: 2, min: [-2.5, 0, 23.5], max: [2.5, 5, 24.5] },
   { a: 2, b: 3, min: [-2.5, 4, 3.5], max: [2.5, 8, 4.5] },
   { a: 3, b: 4, min: [-2, 4, -26.5], max: [2, 8, -25.5] },
+  { a: 3, b: 5, min: [-16.5, 4, -13.5], max: [-15, 7, -10.5] },
+  { a: 3, b: 6, min: [15, 4, -13.5], max: [16.5, 7, -10.5] },
 ];
 
 const solids: Solid[] = [
@@ -106,13 +111,17 @@ const solids: Solid[] = [
   ...room(PILLARS.min, PILLARS.max, [
     { side: 's', c: 0, w: 5, y0: 4, y1: 8 },
     { side: 'n', c: 0, w: 4, y0: 4, y1: 8 },
+    { side: 'w', c: -12, w: 3, y0: 4, y1: 7 },
+    { side: 'e', c: -12, w: 3, y0: 4, y1: 7 },
   ]),
+  ...room(WEST.min, WEST.max, [{ side: 'e', c: -12, w: 3, y0: 4, y1: 7 }]),
+  ...room(EAST.min, EAST.max, [{ side: 'w', c: -12, w: 3, y0: 4, y1: 7 }]),
   ...[-12, -6, 6, 12].flatMap((x) => [pillar(x, -18, 4, 10), pillar(x, -6, 4, 10)]),
   ...room(TROLL.min, TROLL.max, [{ side: 's', c: 0, w: 4, y0: 4, y1: 8 }]),
-  // 트롤 굴 기둥 4개 (M2-C에서 트롤이 부순다)
-  ...[-6, 6].flatMap((x) => [pillar(x, -34, 4, 12, 1), pillar(x, -43, 4, 12, 1)]),
   ...BRAZIERS.map(pedestal),
 ];
+// 트롤 굴 기둥 4개: 트롤의 내려찍기에 부서진다 (숨을 곳이자 한정된 자원)
+const breakable = [-6, 6].flatMap((x) => [-34, -43].map((z) => solids.push(pillar(x, z, 4, 12, 1)) - 1));
 
 const enemies: EnemySpawn[] = [
   // 계단 위 층계참: 첫 전투 (1:1)
@@ -140,13 +149,23 @@ export const ZONE1: Level = {
   ],
   spawn: [0, 1.2, 50],
   enemies,
-  // 디렉터 물결 자리: 기둥 홀 네 구석·중앙, 트롤 굴 안쪽 (모두 횃불 반경 밖)
+  // 디렉터 물결 자리: 두 고블린 굴 안쪽 끝(먼저 고른다 — 금 간 기둥 옆), 기둥 홀 남쪽 구석, 트롤 굴 안쪽
   spawnPoints: [
-    [-13, 5, -23], [13, 5, -23], [-13, 5, 1], [13, 5, 1], [0, 5, -11], [-8, 5, -48], [8, 5, -48],
+    [-27, 5, -12], [27, 5, -12], [-13, 5, 1], [13, 5, 1], [-8, 5, -48], [8, 5, -48],
   ],
-  rooms: [OUTSIDE, HALL, STAIRS, PILLARS, TROLL],
+  rooms: [OUTSIDE, HALL, STAIRS, PILLARS, TROLL, WEST, EAST],
+  // 금 간 기둥: 굴 입구 앞에서 북쪽(−Z)으로 쓰러져 입구를 막는다. 굴 안쪽을 봉쇄 — 주 동선(x = 0)과 무관
+  collapses: [
+    { pos: [-14.7, 4, -8.2], radius: 0.7, height: 8, dir: [0, -1], hp: 50, seals: [-30, 3, -13.5, -16.2, 9, -10.5] },
+    { pos: [14.7, 4, -8.2], radius: 0.7, height: 8, dir: [0, -1], hp: 50, seals: [16.2, 3, -13.5, 30, 9, -10.5] },
+  ],
   portals,
   // 두린의 문: 서문 밖 북벽과 입구 홀 남벽의 구멍(두께 1m)을 막는다
   doors: [{ pos: [0, DOOR_H / 2, 40], half: [DOOR_W / 2, DOOR_H / 2, 0.5] }],
   braziers: BRAZIERS,
+  // 동굴 트롤: 굴 안쪽에서 잠들어 있다
+  bosses: [{ kind: 'troll', pos: [0, 6, -45] }],
+  // 절정마다 40마리 물결 (계획서: PC 200 / 모바일 60 — 구역 1은 튜토리얼 강도)
+  horde: { size: 40 },
+  breakable,
 };

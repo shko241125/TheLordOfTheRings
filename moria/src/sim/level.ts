@@ -27,6 +27,17 @@ export type Level = {
   doors?: readonly { pos: Vec3; half: Vec3 }[];
   /** 화로 위치 (바닥 높이). 받침은 solids에 따로 있다 */
   braziers?: readonly Vec3[];
+  /** 보스. 일반 적 다음 id를 받는다 */
+  bosses?: readonly { kind: 'troll'; pos: Vec3 }[];
+  /**
+   * 무너지는 기둥: 밑동 중심·반지름·높이·넘어지는 방향(x, z)·체력.
+   * seals = 굳은 뒤 봉쇄하는 영역 [minX, minY, minZ, maxX, maxY, maxZ] (굴 안쪽 — 주 동선에는 두지 않는다)
+   */
+  collapses?: readonly { pos: Vec3; radius: number; height: number; dir: readonly [number, number]; hp: number; seals?: readonly [number, number, number, number, number, number] }[];
+  /** 고블린 물결: 디렉터 절정마다 이만큼이 흐름장 무리로 쏟아진다 (없으면 물결 없음) */
+  horde?: { size: number };
+  /** 부서지는 원기둥 (solids 번호). 렌더는 이것들을 합치지 않고 따로 그린다 */
+  breakable?: readonly number[];
 };
 
 export type Room = { name: string; min: Vec3; max: Vec3 };

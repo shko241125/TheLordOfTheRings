@@ -6,7 +6,9 @@ import { moveMover } from './move';
 import { pathTo } from './nav';
 import { emitNoise, lightAt, noiseAt } from './perception';
 import { hitPlayer } from './player';
-import { G_CHAR, G_LEVEL, groups, type Enemy, type Sim, type SimLight, type V3 } from './types';
+import { COMPANION_FULL, KILL_CHARGE } from './companion';
+import { TROLL_CAPSULE, TROLL_HP, stepTroll, trollDamaged } from './troll';
+import { G_CHAR, G_LEVEL, groups, type Enemy, type EnemyKind, type Sim, type SimLight, type V3 } from './types';
 
 /**
  * 고블린 AI (계획서 9장 적 AI + 6장 감지 필드·공격 토큰).
@@ -31,26 +33,28 @@ const HIT_STAGGER = 14;
 const PARRIED_STAGGER = 50;
 const LOSE_TICKS = 360;
 
-export function createEnemy(sim: Sim, id: number, pos: V3, patrol: readonly V3[]): Enemy {
+export function createEnemy(sim: Sim, id: number, pos: V3, patrol: readonly V3[], kind: EnemyKind = 'goblin'): Enemy {
   const body = sim.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos[0], pos[1], pos[2]));
+  const cap = kind === 'troll' ? TROLL_CAPSULE : GOBLIN_CAPSULE;
   const collider = sim.world.createCollider(
-    RAPIER.ColliderDesc.capsule(GOBLIN_CAPSULE.half, GOBLIN_CAPSULE.radius).setCollisionGroups(groups(G_CHAR, 0xffff)),
+    RAPIER.ColliderDesc.capsule(cap.half, cap.radius).setCollisionGroups(groups(G_CHAR, 0xffff)),
     body,
   );
   return {
-    id, body, collider,
+    id, kind, body, collider,
     vx: 0, vz: 0, vy: 0, facing: 0, grounded: false, airTicks: 0,
-    hp: GOBLIN_HP, ai: 'patrol', aiTick: 0, awareness: 0,
+    hp: kind === 'troll' ? TROLL_HP : GOBLIN_HP, ai: 'patrol', aiTick: 0, awareness: 0,
     patrol, patrolIdx: 0, path: [], pathIdx: 0, repathAt: 0,
     hasToken: false, cooldownUntil: 0, hitSet: new Set(),
     orbitSign: id % 2 === 0 ? 1 : -1,
     lastSeen: [pos[0], pos[1], pos[2]],
     swingTick: -1,
     staggerLen: HIT_STAGGER,
+    move: '', aimX: pos[0], aimZ: pos[2], home: [pos[0], pos[1], pos[2]], fromHorde: false,
   };
 }
 
-function setAI(e: Enemy, ai: Enemy['ai']) {
+export function setAI(e: Enemy, ai: Enemy['ai']) {
   e.ai = ai;
   e.aiTick = 0;
 }
@@ -64,7 +68,7 @@ function releaseToken(sim: Sim, e: Enemy) {
 }
 
 /** 시선: 적 눈높이 → 플레이어 가슴. 레벨 도형만 막는다. */
-function lineOfSight(sim: Sim, ex: number, ey: number, ez: number, px: number, py: number, pz: number): boolean {
+export function lineOfSight(sim: Sim, ex: number, ey: number, ez: number, px: number, py: number, pz: number): boolean {
   const dx = px - ex, dy = py - ey, dz = pz - ez;
   const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
   if (d < 0.01) return true;
@@ -105,7 +109,7 @@ export function perceive(sim: Sim, e: Enemy, lights: readonly SimLight[]): numbe
   return gain;
 }
 
-function steerTo(e: Enemy, tx: number, tz: number, speed: number, faceMove: boolean) {
+export function steerTo(e: Enemy, tx: number, tz: number, speed: number, faceMove: boolean) {
   const t = e.body.translation();
   const dx = tx - t.x, dz = tz - t.z;
   const d = Math.sqrt(dx * dx + dz * dz);
@@ -115,7 +119,7 @@ function steerTo(e: Enemy, tx: number, tz: number, speed: number, faceMove: bool
   if (faceMove && d > 0.05) turnTo(e, dAtan2Angle(-dx, -dz), TURN);
 }
 
-function accelTo(e: Enemy, wantX: number, wantZ: number) {
+export function accelTo(e: Enemy, wantX: number, wantZ: number) {
   const dvx = wantX - e.vx, dvz = wantZ - e.vz;
   const dv = Math.sqrt(dvx * dvx + dvz * dvz);
   const max = ACCEL * DT;
@@ -128,7 +132,7 @@ function accelTo(e: Enemy, wantX: number, wantZ: number) {
   }
 }
 
-function turnTo(e: Enemy, want: number, rate: number) {
+export function turnTo(e: Enemy, want: number, rate: number) {
   const d = angleDiff(e.facing, want);
   e.facing = (e.facing + (d > rate ? rate : d < -rate ? -rate : d)) & 4095;
 }
@@ -140,10 +144,10 @@ function facePlayer(sim: Sim, e: Enemy, rate: number) {
 }
 
 /** 경로를 따라간다 (주기적으로 다시 찾는다 — 적마다 틱을 엇갈려 한 틱에 몰리지 않게) */
-function followPath(sim: Sim, e: Enemy, goal: V3, speed: number) {
+export function followPath(sim: Sim, e: Enemy, goal: V3, speed: number) {
   const me = e.body.translation();
   if (sim.tick >= e.repathAt || e.path.length === 0) {
-    e.path = pathTo(sim.nav, [me.x, me.y, me.z], goal);
+    e.path = pathTo(sim.nav, [me.x, me.y, me.z], goal, sim.navBlock.filter);
     e.pathIdx = 0;
     e.repathAt = sim.tick + 20 + (e.id % 7);
   }
@@ -200,10 +204,15 @@ export function damageEnemy(sim: Sim, e: Enemy, damage: number) {
     // 시체는 길을 막지 않는다
     e.collider.setCollisionGroups(groups(0, 0));
     sim.events.push({ type: 'death', tick: sim.tick, enemy: e.id });
+    sim.player.companion = Math.min(COMPANION_FULL, sim.player.companion + KILL_CHARGE);
     // 디렉터 긴장도: 코앞(5m)에서 쓰러뜨리면 +0.05 — 치열한 근접전일수록 긴장이 쌓인다
     const me = e.body.translation();
     const pt = sim.player.body.translation();
     if ((me.x - pt.x) ** 2 + (me.z - pt.z) ** 2 < 25) sim.director.intensity = Math.min(1, sim.director.intensity + 0.05);
+    return;
+  }
+  if (e.kind === 'troll') {
+    trollDamaged(sim, e); // 트롤은 보통 공격에 휘청이지 않는다
     return;
   }
   alert(sim, e);
@@ -219,6 +228,10 @@ export function stepEnemies(sim: Sim, lights: readonly SimLight[]) {
   for (const e of sim.enemies) {
     e.aiTick++;
     if (e.ai === 'dead') continue;
+    if (e.kind === 'troll') {
+      stepTroll(sim, e, lights);
+      continue;
+    }
     const me = e.body.translation();
     const dx = pt.x - me.x, dz = pt.z - me.z;
     const dist = Math.sqrt(dx * dx + dz * dz);

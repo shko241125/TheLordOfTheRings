@@ -19,8 +19,12 @@ export function createHud() {
     #toast { position: fixed; left: 50%; top: 38%; transform: translateX(-50%); font: 600 22px/1 serif; color: #ffd28a; text-shadow: 0 0 8px #000; pointer-events: none; opacity: 0; transition: opacity .25s; }
     #dead { position: fixed; inset: 0; display: none; place-items: center; background: rgba(20,0,0,.55); color: #e8c4b0; font: 28px/1.6 serif; text-align: center; }
     #dead small { display: block; font-size: 14px; color: #b09080; }
+    #dead .book { display: block; max-width: min(640px, 90vw); margin: 10px auto 14px; font: italic 17px/1.6 serif; color: #d9c7a6; }
     #prompt { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); font: 16px/1 serif; color: #f0e2c0; text-shadow: 0 0 6px #000; pointer-events: none; display: none; }
     #prompt b { display: inline-block; padding: 2px 7px; margin-right: 6px; border: 1px solid #cbbd9e; border-radius: 3px; font: 600 13px ui-monospace, monospace; }
+    #boss { position: fixed; left: 50%; top: 22px; width: min(460px, 70vw); transform: translateX(-50%); pointer-events: none; display: none; font: 15px/1.4 serif; color: #e6d6b8; text-align: center; text-shadow: 0 0 5px #000; }
+    #boss .bar { height: 9px; margin-top: 4px; background: rgba(0,0,0,.6); border: 1px solid rgba(203,189,158,.4); }
+    #boss .bar > i { display: block; height: 100%; background: #8e2a1c; transition: width .12s linear; }
     #minimap { position: fixed; right: 16px; top: 16px; pointer-events: none; opacity: .85; }
     .gob-mark { position: fixed; left: 0; top: 0; font: 700 22px/1 serif; color: #ffcf6a; text-shadow: 0 0 6px #000, 0 0 2px #000; pointer-events: none; display: none; }
   `;
@@ -32,8 +36,11 @@ export function createHud() {
   const toast = Object.assign(document.createElement('div'), { id: 'toast' });
   const dead = Object.assign(document.createElement('div'), { id: 'dead' });
   dead.innerHTML = '쓰러졌다<small>R — 다시 시작</small>';
+  let deathMode: 'auto' | 'shown' = 'auto';
   const prompt = Object.assign(document.createElement('div'), { id: 'prompt' });
-  document.body.append(root, lock, toast, dead, prompt);
+  const boss = Object.assign(document.createElement('div'), { id: 'boss' });
+  boss.innerHTML = '<span></span><div class="bar"><i></i></div>';
+  document.body.append(root, lock, toast, dead, prompt, boss);
   const hp = root.querySelector<HTMLElement>('#hp > i')!;
   const st = root.querySelector<HTMLElement>('#st > i')!;
   const stBar = root.querySelector<HTMLElement>('#st')!;
@@ -48,6 +55,28 @@ export function createHud() {
       toast.style.opacity = '1';
       toastUntil = clock + seconds;
     },
+    /**
+     * 쓰러짐 화면: 마자르불의 책 한 줄 + 안내. replayReady면 'B — 마지막 60초 보기'.
+     * mode 'replay'는 재생이 끝났을 때 (다시 보기 / 게임으로)
+     */
+    death(line: string, mode: 'saving' | 'ready' | 'none' | 'replay') {
+      deathMode = 'shown';
+      const esc = (t: string) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
+      const hint =
+        mode === 'replay' ? 'R — 다시 보기 · Enter — 게임으로'
+        : mode === 'ready' ? 'B — 마지막 60초 보기 · R — 다시 시작'
+        : mode === 'saving' ? '기록을 적는 중… · R — 다시 시작'
+        : 'R — 다시 시작';
+      dead.innerHTML = `${mode === 'replay' ? '기록은 여기서 끝난다' : '쓰러졌다'}<span class="book">마자르불의 책 — “${esc(line)}”</span><small>${hint}</small>`;
+      dead.style.display = 'grid';
+    },
+    /** 보스 체력바 (깨어 있을 때만) */
+    boss(b: { name: string; hp: number; max: number; awake: boolean } | null) {
+      boss.style.display = b?.awake ? 'block' : 'none';
+      if (!b?.awake) return;
+      boss.querySelector('span')!.textContent = b.name;
+      boss.querySelector<HTMLElement>('i')!.style.width = `${(b.hp / b.max) * 100}%`;
+    },
     /** 가까운 상호작용 대상 안내 (창이 열려 있으면 숨긴다) */
     prompt(target: Interactable | null, hidden: boolean) {
       const text = !target || hidden ? '' : target.kind === 'door' ? '비문 읽기' : target.lit ? '쉬기 (저장)' : '화로 밝히기';
@@ -61,7 +90,8 @@ export function createHud() {
       st.style.width = `${(p.stamina / STAMINA_MAX) * 100}%`;
       stBar.classList.toggle('low', p.exhausted);
       const senseLeft = Math.max(0, p.senseReadyAt - sim.tick);
-      torch.textContent = `횃불 ${p.heldTorch >= 0 ? '들고 있음' : '없음'} · 예비 ${p.spareTorches} · 돌의 감각 ${senseLeft > 0 ? `${Math.ceil(senseLeft / 60)}초` : '준비'}`;
+      const ally = p.companion >= 100 ? '준비 (Q)' : `${Math.floor(p.companion)}%`;
+      torch.textContent = `횃불 ${p.heldTorch >= 0 ? '들고 있음' : '없음'} · 예비 ${p.spareTorches} · 돌의 감각 ${senseLeft > 0 ? `${Math.ceil(senseLeft / 60)}초` : '준비'} · 동료 ${ally}`;
       state.textContent = sim.tick < p.riposteUntil ? '반격!' : '';
       if (lockScreen) {
         lock.style.display = 'block';
@@ -69,7 +99,7 @@ export function createHud() {
         lock.style.top = `${lockScreen.y}px`;
       } else lock.style.display = 'none';
       if (clock > toastUntil) toast.style.opacity = '0';
-      dead.style.display = p.action === 'dead' ? 'grid' : 'none';
+      if (deathMode === 'auto') dead.style.display = p.action === 'dead' ? 'grid' : 'none';
     },
   };
 }

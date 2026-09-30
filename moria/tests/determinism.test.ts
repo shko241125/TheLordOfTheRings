@@ -1,7 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { TEST_ROOM } from '../src/sim/level';
-import { ZONE1_TICKS, scriptedInputs, zone1Inputs } from '../src/sim/scripted';
+import { HORDE_TICKS, TROLL_TICKS, ZONE1_TICKS, hordeStart, scriptedInputs, trollStart, zone1Inputs } from '../src/sim/scripted';
 import { ZONE1 } from '../src/sim/zone1';
 import { createSim, disposeSim, hashSim, stepSim, type InputFrame } from '../src/sim/sim';
 import golden from './golden/determinism.json';
@@ -85,5 +85,36 @@ describe('결정성', () => {
     expect(sim.doors[0]!.open).toBe(true);
     disposeSim(sim);
     expect(out).toEqual((golden as { zone1?: number[] }).zone1);
+  }, 120_000);
+
+  it('트롤전(깨우기·내려찍기·기둥·유인) 해시가 골든과 같다 — runDeterminism().troll과 같은 값', () => {
+    const sim = createSim(ZONE1, SEED);
+    trollStart(sim);
+    const out: number[] = [];
+    for (const f of scriptedInputs(SEED, TROLL_TICKS)) {
+      stepSim(sim, f);
+      sim.events.length = 0;
+      if (sim.tick % 180 === 0) out.push(hashSim(sim));
+    }
+    const troll = sim.enemies.find((e) => e.kind === 'troll')!;
+    expect(troll.ai).not.toBe('patrol'); // 실제로 싸움이 일어났다
+    disposeSim(sim);
+    expect(out).toEqual((golden as { troll?: number[] }).troll);
+  }, 120_000);
+
+  it('물결(흐름장·빛 경계·승격·강등) 해시가 골든과 같다 — runDeterminism().horde와 같은 값', () => {
+    const sim = createSim(ZONE1, SEED);
+    hordeStart(sim);
+    const out: number[] = [];
+    let promoted = 0;
+    for (const f of scriptedInputs(SEED, HORDE_TICKS)) {
+      stepSim(sim, f);
+      sim.events.length = 0;
+      promoted = Math.max(promoted, sim.enemies.filter((e) => e.fromHorde).length);
+      if (sim.tick % 120 === 0) out.push(hashSim(sim));
+    }
+    expect(promoted).toBeGreaterThan(0); // 실제로 승격이 일어났다
+    disposeSim(sim);
+    expect(out).toEqual((golden as { horde?: number[] }).horde);
   }, 120_000);
 });

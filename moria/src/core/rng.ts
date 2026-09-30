@@ -7,6 +7,9 @@ export type Rng = {
   next(): number;
   /** [0, n) 정수 */
   int(n: number): number;
+  /** 내부 상태 (스냅샷·리플레이용). 수열에는 영향이 없다 */
+  state(): number;
+  setState(s: number): void;
 };
 
 export function createRng(seed: number): Rng {
@@ -18,7 +21,14 @@ export function createRng(seed: number): Rng {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-  return { next, int: (n) => Math.floor(next() * n) };
+  return {
+    next,
+    int: (n) => Math.floor(next() * n),
+    state: () => s,
+    setState: (v) => {
+      s = v >>> 0;
+    },
+  };
 }
 
 /** FNV-1a 32비트. 시스템별 난수 스트림 시드 파생과 상태 해시에 쓴다. */

@@ -345,10 +345,14 @@ function toggleLock(sim: Sim, p: PlayerState) {
 }
 
 /** 플레이어가 맞았다: 무적·패링·피해 처리. 반환값 = 실제로 맞았는가 */
-export function hitPlayer(sim: Sim, damage: number, fromX: number, fromZ: number, attackerFacing: number): 'iframe' | 'parry' | 'hit' {
+/** unparryable: 패링 창이어도 맞는다 (트롤 내려찍기 — 피해야만 한다). knockback: 밀려나는 속도 (m/s) */
+export function hitPlayer(
+  sim: Sim, damage: number, fromX: number, fromZ: number, attackerFacing: number,
+  opts: { unparryable?: boolean; knockback?: number; source?: 'goblin' | 'troll' | 'collapse' } = {},
+): 'iframe' | 'parry' | 'hit' {
   const p = sim.player;
   if (p.action === 'dodge' && p.actionTick >= DODGE_IFRAME_FROM && p.actionTick < DODGE_IFRAME_TO) return 'iframe';
-  if (p.action === 'parry' && p.actionTick >= PARRY_WINDOW_FROM && p.actionTick < PARRY_WINDOW_TO) {
+  if (!opts.unparryable && p.action === 'parry' && p.actionTick >= PARRY_WINDOW_FROM && p.actionTick < PARRY_WINDOW_TO) {
     // 정면 ±90°에서 온 공격만 패링된다
     const me = p.body.translation();
     const toAttacker = dAtan2Angle(-(fromX - me.x), -(fromZ - me.z));
@@ -356,7 +360,7 @@ export function hitPlayer(sim: Sim, damage: number, fromX: number, fromZ: number
   }
   if (p.action === 'dead') return 'iframe';
   p.hp = Math.max(0, p.hp - damage);
-  sim.events.push({ type: 'playerHit', tick: sim.tick, damage });
+  sim.events.push({ type: 'playerHit', tick: sim.tick, damage, source: opts.source ?? 'goblin' });
   // 디렉터 긴장도: 맞은 피해 비율만큼 오른다 (L4D 방식)
   sim.director.intensity = Math.min(1, sim.director.intensity + damage / p.maxHp);
   if (p.hp === 0) {
@@ -368,7 +372,8 @@ export function hitPlayer(sim: Sim, damage: number, fromX: number, fromZ: number
   p.charging = false;
   p.comboQueued = false;
   // 넉백: 공격자 바라보는 방향으로 밀린다
-  p.vx = -dsin(attackerFacing) * 3;
-  p.vz = -dcos(attackerFacing) * 3;
+  const kb = opts.knockback ?? 3;
+  p.vx = -dsin(attackerFacing) * kb;
+  p.vz = -dcos(attackerFacing) * kb;
   return 'hit';
 }
