@@ -7,7 +7,11 @@ import { pathTo } from './nav';
 import { emitNoise, lightAt, noiseAt } from './perception';
 import { hitPlayer } from './player';
 import { COMPANION_FULL, KILL_CHARGE } from './companion';
+import { XP, addXp } from './growth';
+import { dropLoot } from './gear';
 import { TROLL_CAPSULE, TROLL_HP, stepTroll, trollDamaged } from './troll';
+import { ARCHER_HP, stepArcher } from './archer';
+import { CAPTAIN_CAPSULE, CAPTAIN_HP, captainDamaged, stepCaptain } from './captain';
 import { G_CHAR, G_LEVEL, groups, type Enemy, type EnemyKind, type Sim, type SimLight, type V3 } from './types';
 
 /**
@@ -33,9 +37,14 @@ const HIT_STAGGER = 14;
 const PARRIED_STAGGER = 50;
 const LOSE_TICKS = 360;
 
+/** 종류별 캡슐·체력 */
+const CAPSULE: Record<EnemyKind, { half: number; radius: number }> = { goblin: GOBLIN_CAPSULE, archer: GOBLIN_CAPSULE, troll: TROLL_CAPSULE, captain: CAPTAIN_CAPSULE };
+const HP: Record<EnemyKind, number> = { goblin: GOBLIN_HP, archer: ARCHER_HP, troll: TROLL_HP, captain: CAPTAIN_HP };
+export const enemyRadius = (k: EnemyKind) => CAPSULE[k].radius;
+
 export function createEnemy(sim: Sim, id: number, pos: V3, patrol: readonly V3[], kind: EnemyKind = 'goblin'): Enemy {
   const body = sim.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos[0], pos[1], pos[2]));
-  const cap = kind === 'troll' ? TROLL_CAPSULE : GOBLIN_CAPSULE;
+  const cap = CAPSULE[kind];
   const collider = sim.world.createCollider(
     RAPIER.ColliderDesc.capsule(cap.half, cap.radius).setCollisionGroups(groups(G_CHAR, 0xffff)),
     body,
@@ -43,14 +52,14 @@ export function createEnemy(sim: Sim, id: number, pos: V3, patrol: readonly V3[]
   return {
     id, kind, body, collider,
     vx: 0, vz: 0, vy: 0, facing: 0, grounded: false, airTicks: 0,
-    hp: kind === 'troll' ? TROLL_HP : GOBLIN_HP, ai: 'patrol', aiTick: 0, awareness: 0,
+    hp: HP[kind], ai: 'patrol', aiTick: 0, awareness: 0,
     patrol, patrolIdx: 0, path: [], pathIdx: 0, repathAt: 0,
     hasToken: false, cooldownUntil: 0, hitSet: new Set(),
     orbitSign: id % 2 === 0 ? 1 : -1,
     lastSeen: [pos[0], pos[1], pos[2]],
     swingTick: -1,
     staggerLen: HIT_STAGGER,
-    move: '', aimX: pos[0], aimZ: pos[2], home: [pos[0], pos[1], pos[2]], fromHorde: false,
+    move: '', aimX: pos[0], aimZ: pos[2], home: [pos[0], pos[1], pos[2]], fromHorde: false, step: 0, used: 0,
   };
 }
 
@@ -177,7 +186,7 @@ function separate(sim: Sim, e: Enemy) {
   }
 }
 
-function alert(sim: Sim, e: Enemy) {
+export function alert(sim: Sim, e: Enemy) {
   if (e.ai === 'chase' || e.ai === 'engage' || e.ai === 'attack') return;
   setAI(e, 'chase');
   e.awareness = 1;
@@ -204,7 +213,9 @@ export function damageEnemy(sim: Sim, e: Enemy, damage: number) {
     // 시체는 길을 막지 않는다
     e.collider.setCollisionGroups(groups(0, 0));
     sim.events.push({ type: 'death', tick: sim.tick, enemy: e.id });
-    sim.player.companion = Math.min(COMPANION_FULL, sim.player.companion + KILL_CHARGE);
+    sim.player.companion = Math.min(COMPANION_FULL, sim.player.companion + KILL_CHARGE * sim.player.mods.ally);
+    addXp(sim, XP[e.kind]);
+    dropLoot(sim, e);
     // 디렉터 긴장도: 코앞(5m)에서 쓰러뜨리면 +0.05 — 치열한 근접전일수록 긴장이 쌓인다
     const me = e.body.translation();
     const pt = sim.player.body.translation();
@@ -213,6 +224,10 @@ export function damageEnemy(sim: Sim, e: Enemy, damage: number) {
   }
   if (e.kind === 'troll') {
     trollDamaged(sim, e); // 트롤은 보통 공격에 휘청이지 않는다
+    return;
+  }
+  if (e.kind === 'captain') {
+    captainDamaged(sim, e); // 대장은 패링당할 때·벽에 박힐 때만 휘청인다
     return;
   }
   alert(sim, e);
@@ -230,6 +245,14 @@ export function stepEnemies(sim: Sim, lights: readonly SimLight[]) {
     if (e.ai === 'dead') continue;
     if (e.kind === 'troll') {
       stepTroll(sim, e, lights);
+      continue;
+    }
+    if (e.kind === 'archer') {
+      stepArcher(sim, e, lights);
+      continue;
+    }
+    if (e.kind === 'captain') {
+      stepCaptain(sim, e, lights);
       continue;
     }
     const me = e.body.translation();

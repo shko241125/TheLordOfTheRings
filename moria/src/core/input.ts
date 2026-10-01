@@ -80,6 +80,7 @@ export function createInput(target: HTMLElement) {
   let lastPadPoll = performance.now();
   let pad: { lx: number; ly: number; buttons: (i: number) => boolean } | null = null;
   let touch: TouchControls | null = null;
+  let pendingCmd = 0;
 
   // 글자 입력창(두린의 문)에 치는 동안에는 게임 조작으로 받지 않는다 ('mellon'의 e가 E 상호작용이 되지 않게)
   const typing = (e: Event) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
@@ -200,12 +201,19 @@ export function createInput(target: HTMLElement) {
         pulses |
         (ts?.buttons ?? 0);
       pulses = 0;
+      const cmd = pendingCmd;
+      pendingCmd = 0;
       return {
+        ...(cmd ? { cmd } : {}),
         buttons,
         moveX: Math.round(Math.max(-1, Math.min(1, x)) * 127),
         moveY: Math.round(Math.max(-1, Math.min(1, y)) * 127),
         yaw: radToAngle(view.yaw),
       };
+    },
+    /** UI 명령 (스킬 배우기 1..N, 초기화 255) — 다음 틱 입력에 한 번 실린다 */
+    command(n: number) {
+      pendingCmd = n;
     },
     /** 터치 조작을 붙인다 (모바일) */
     attachTouch(t: TouchControls) {

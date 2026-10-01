@@ -87,7 +87,7 @@ describe('화로', () => {
     stepSim(a, idle(BTN_INTERACT));
     a.doors[0]!.open = true; // 문은 스텝 없이 상태만 (복원 경로 검사)
     const pr = progressOf(a);
-    expect(pr).toEqual({ doorsOpen: [0], lit: [0], checkpoint: 0, bossesDown: [] });
+    expect(pr).toEqual({ doorsOpen: [0], lit: [0], checkpoint: 0, bossesDown: [], lampsLit: [] });
     const b = createSim(ZONE1, 5);
     restoreProgress(b, pr);
     expect(b.doors[0]!.open && b.doors[0]!.body === null).toBe(true);
@@ -95,7 +95,7 @@ describe('화로', () => {
     expect(pos(b)).toMatchObject({ x: -5, z: 33.5 });
     // 잘못된 번호는 무시 (오래된·손상된 저장)
     const c = createSim(ZONE1, 5);
-    restoreProgress(c, { doorsOpen: [9], lit: [-1, 99], checkpoint: 42, bossesDown: [7] });
+    restoreProgress(c, { doorsOpen: [9], lit: [-1, 99], checkpoint: 42, bossesDown: [7], lampsLit: [5] });
     expect(c.checkpoint).toBe(-1);
     [a, b, c].forEach(disposeSim);
   }, 60_000);

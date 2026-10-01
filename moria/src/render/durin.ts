@@ -2,6 +2,9 @@ import { checkAnswer } from '../core/riddle';
 
 /** 60초 동안 풀지 못하면 간달프가 힌트를 준다 (계획서 6장 I) */
 const HINT_AFTER = 60;
+/** 틀린 답이 이만큼이면 60초를 기다리지 않고 힌트 (원작을 모르면 막힌다 — 첫 플레이 피드백) */
+const HINT_AFTER_WRONG = 3;
+const GANDALF = "간달프: 이런, 너무 어렵게 생각했군. '벗'을 요정의 말로 하면… 멜론(Mellon)일세.";
 
 type Recognition = {
   lang: string;
@@ -55,6 +58,7 @@ export function createDurinUI(onSolved: () => void, onToggle: (open: boolean) =>
   let solved = false;
   let nearTime = 0;
   let hinted = false;
+  let wrong = 0;
 
   const say = (text: string) => {
     if (solved) return;
@@ -64,7 +68,16 @@ export function createDurinUI(onSolved: () => void, onToggle: (open: boolean) =>
       onSolved();
       setTimeout(() => api.close(), 900);
     } else {
-      msg.textContent = text.trim() ? '문은 침묵한다.' : '';
+      if (text.trim()) wrong++;
+      // 틀릴수록 도움이 늘어난다: 1번 침묵 → 2번 비문을 다시 보라 → 3번 간달프
+      msg.textContent = !text.trim()
+        ? ''
+        : wrong >= HINT_AFTER_WRONG
+          ? GANDALF
+          : wrong === 2
+            ? "문은 침묵한다. …비문은 '벗이여'라고 부른다. 벗이라는 말 자체가 열쇠일지도."
+            : '문은 침묵한다.';
+      if (wrong >= HINT_AFTER_WRONG) hinted = true;
       root.classList.remove('shake');
       void root.offsetWidth; // 애니메이션 재시작
       root.classList.add('shake');
@@ -136,7 +149,7 @@ export function createDurinUI(onSolved: () => void, onToggle: (open: boolean) =>
       nearTime += dt;
       if (hinted || nearTime < HINT_AFTER) return null;
       hinted = true;
-      const hint = "간달프: 이런, 너무 어렵게 생각했군. '벗'을 요정의 말로 하면… 멜론(Mellon)일세.";
+      const hint = GANDALF;
       msg.textContent = hint;
       return hint;
     },

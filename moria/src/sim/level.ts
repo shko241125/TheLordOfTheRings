@@ -10,9 +10,13 @@ export type Solid =
   | { kind: 'box'; pos: Vec3; half: Vec3; rot?: Quat; surface: SurfaceKind }
   | { kind: 'cylinder'; pos: Vec3; radius: number; halfHeight: number; surface: SurfaceKind };
 
-export type EnemySpawn = { pos: Vec3; patrol: readonly Vec3[] };
+export type EnemySpawn = { pos: Vec3; patrol: readonly Vec3[]; /** 기본 고블린 */ kind?: 'goblin' | 'archer' };
+
+export type ZoneId = 'zone1' | 'zone2';
 
 export type Level = {
+  /** 구역 id (저장·리플레이·구역 이동이 가리킨다). 시험 방은 없음 */
+  id?: ZoneId;
   solids: readonly Solid[];
   torches: readonly Vec3[];
   spawn: Vec3;
@@ -24,11 +28,11 @@ export type Level = {
   rooms?: readonly Room[];
   portals?: readonly Portal[];
   /** 레벨 바디 다음 순서로 만든다 (결정성 규칙 4). 내비메시에는 넣지 않는다 — 열린 상태 기준 */
-  doors?: readonly { pos: Vec3; half: Vec3 }[];
+  doors?: readonly { pos: Vec3; half: Vec3; /** 렌더 모양: 두린의 문(이실딘) / 쇠문 */ style?: 'durin' | 'gate' }[];
   /** 화로 위치 (바닥 높이). 받침은 solids에 따로 있다 */
   braziers?: readonly Vec3[];
   /** 보스. 일반 적 다음 id를 받는다 */
-  bosses?: readonly { kind: 'troll'; pos: Vec3 }[];
+  bosses?: readonly { kind: 'troll' | 'captain'; pos: Vec3 }[];
   /**
    * 무너지는 기둥: 밑동 중심·반지름·높이·넘어지는 방향(x, z)·체력.
    * seals = 굳은 뒤 봉쇄하는 영역 [minX, minY, minZ, maxX, maxY, maxZ] (굴 안쪽 — 주 동선에는 두지 않는다)
@@ -36,6 +40,16 @@ export type Level = {
   collapses?: readonly { pos: Vec3; radius: number; height: number; dir: readonly [number, number]; hp: number; seals?: readonly [number, number, number, number, number, number] }[];
   /** 고블린 물결: 디렉터 절정마다 이만큼이 흐름장 무리로 쏟아진다 (없으면 물결 없음) */
   horde?: { size: number };
+  /**
+   * 구역 출구: 플레이어가 상자 안에 들어오면(조건을 채웠을 때) 다른 구역의 입구로 간다. to = 'end'면 지금 만들어진 끝.
+   * requires: 'bosses' = 이 구역 보스를 모두 쓰러뜨림, 'lamps' = 등불을 모두 밝힘
+   */
+  exits?: readonly { min: Vec3; max: Vec3; to: ZoneId | 'end'; entry: string; requires?: readonly ('bosses' | 'lamps')[]; locked?: string }[];
+  /** 다른 구역에서 들어올 때 서는 자리와 바라보는 방향 (정수 각도) */
+  entries?: Readonly<Record<string, { pos: Vec3; facing: number }>>;
+  /** 퀘스트 등불 (바닥 높이). 모두 밝히면 lampDoors의 문이 열린다 */
+  lamps?: readonly Vec3[];
+  lampDoors?: readonly number[];
   /** 부서지는 원기둥 (solids 번호). 렌더는 이것들을 합치지 않고 따로 그린다 */
   breakable?: readonly number[];
 };

@@ -2,6 +2,8 @@ import type { Interactable } from '../sim/interact';
 import type { Level } from '../sim/level';
 import type { Sim } from '../sim/types';
 import { STAMINA_MAX } from '../sim/combat';
+import { xpToNext } from '../sim/growth';
+import { GRADE_COLORS, GRADE_NAMES } from '../sim/items';
 
 /**
  * HUD (HTML 오버레이 — 계획서 13장). 전투 중에는 가장자리에만: 좌하단 체력·스태미나, 락온 표식, 짧은 알림.
@@ -31,7 +33,7 @@ export function createHud() {
   document.head.appendChild(style);
   const root = document.createElement('div');
   root.id = 'hudbars';
-  root.innerHTML = `<div id="hp" class="bar"><i></i></div><div id="st" class="bar"><i></i></div><div class="row"><span id="torch"></span><span id="state"></span></div>`;
+  root.innerHTML = `<div id="lv" class="row" style="margin:0 0 4px"></div><div id="hp" class="bar"><i></i></div><div id="st" class="bar"><i></i></div><div class="row"><span id="torch"></span><span id="state"></span></div>`;
   const lock = Object.assign(document.createElement('div'), { id: 'lock' });
   const toast = Object.assign(document.createElement('div'), { id: 'toast' });
   const dead = Object.assign(document.createElement('div'), { id: 'dead' });
@@ -45,6 +47,7 @@ export function createHud() {
   const st = root.querySelector<HTMLElement>('#st > i')!;
   const stBar = root.querySelector<HTMLElement>('#st')!;
   const torch = root.querySelector<HTMLElement>('#torch')!;
+  const level = root.querySelector<HTMLElement>('#lv')!;
   const state = root.querySelector<HTMLElement>('#state')!;
   let toastUntil = 0;
   let clock = 0;
@@ -79,7 +82,11 @@ export function createHud() {
     },
     /** 가까운 상호작용 대상 안내 (창이 열려 있으면 숨긴다) */
     prompt(target: Interactable | null, hidden: boolean) {
-      const text = !target || hidden ? '' : target.kind === 'door' ? '비문 읽기' : target.lit ? '쉬기 (저장)' : '화로 밝히기';
+      const text = !target || hidden ? ''
+        : target.kind === 'door' ? '비문 읽기'
+        : target.kind === 'lamp' ? '등불 밝히기'
+        : target.kind === 'loot' ? `줍기 — <span style="color:${GRADE_COLORS[target.grade]}">${GRADE_NAMES[target.grade]} ${target.name}</span>`
+        : target.lit ? '쉬기 (저장)' : '화로 밝히기';
       prompt.style.display = text ? 'block' : 'none';
       if (text) prompt.innerHTML = `<b>E</b>${text}`;
     },
@@ -91,6 +98,7 @@ export function createHud() {
       stBar.classList.toggle('low', p.exhausted);
       const senseLeft = Math.max(0, p.senseReadyAt - sim.tick);
       const ally = p.companion >= 100 ? '준비 (Q)' : `${Math.floor(p.companion)}%`;
+      level.textContent = `Lv ${p.level} · XP ${Math.floor(p.xp)}/${xpToNext(p.level)}${p.points ? ` · 스킬 포인트 ${p.points} (Tab)` : ''}`;
       torch.textContent = `횃불 ${p.heldTorch >= 0 ? '들고 있음' : '없음'} · 예비 ${p.spareTorches} · 돌의 감각 ${senseLeft > 0 ? `${Math.ceil(senseLeft / 60)}초` : '준비'} · 동료 ${ally}`;
       state.textContent = sim.tick < p.riposteUntil ? '반격!' : '';
       if (lockScreen) {
@@ -158,6 +166,13 @@ export function createMinimap(level: Level) {
         if (!shown.has(i)) return;
         g.fillRect(X(r.min[0]), Y(r.min[2]), (r.max[0] - r.min[0]) * scale, (r.max[2] - r.min[2]) * scale);
         g.strokeRect(X(r.min[0]) + 0.5, Y(r.min[2]) + 0.5, (r.max[0] - r.min[0]) * scale - 1, (r.max[2] - r.min[2]) * scale - 1);
+      });
+      (level.lamps ?? []).forEach((l, i) => {
+        if (!shown.has(roomOf(l[0], l[1] + 0.5, l[2]))) return;
+        g.fillStyle = sim.lamps[i]?.lit ? '#ffcf60' : '#777';
+        g.beginPath();
+        g.arc(X(l[0]), Y(l[2]), 4, 0, Math.PI * 2);
+        g.fill();
       });
       braziers.forEach((b, i) => {
         if (!shown.has(roomOf(b[0], b[1] + 0.5, b[2]))) return;

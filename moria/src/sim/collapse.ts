@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { DEFAULT_QUERY_FILTER, queryPolygons, type NodeRef, type QueryFilter } from 'navcat';
 import { damageEnemy } from './enemy';
+import { XP, addXp } from './growth';
 import { blockCells } from './horde';
 import type { Level } from './level';
 import { hitPlayer } from './player';
@@ -120,7 +121,9 @@ export function stepCollapses(sim: Sim) {
       if (sim.horde) {
         const before = sim.horde.agents.length;
         sim.horde.agents = sim.horde.agents.filter((a) => !inBand(c, a.x, a.z));
-        sim.player.companion = Math.min(100, sim.player.companion + (before - sim.horde.agents.length));
+        const crushed = before - sim.horde.agents.length;
+        sim.player.companion = Math.min(100, sim.player.companion + crushed * sim.player.mods.ally);
+        addXp(sim, crushed * XP.horde);
       }
       for (const e of sim.enemies) {
         if (e.ai === 'dead') continue;

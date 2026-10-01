@@ -14,12 +14,14 @@ beforeAll(async () => {
 });
 
 describe('리플레이', () => {
-  it('입력 6바이트 델타 왕복 (음수 이동·큰 버튼 비트·yaw 4095)', () => {
+  it('입력 7바이트 델타 왕복 (음수 이동·큰 버튼 비트·yaw 4095·명령), v1(6바이트)도 읽는다', () => {
     const frames = scriptedInputs(3, 500);
-    frames.push({ buttons: 0x1fff, moveX: -127, moveY: 127, yaw: 4095 });
+    frames.push({ buttons: 0x1fff, moveX: -127, moveY: 127, yaw: 4095 }, { buttons: 0, moveX: 0, moveY: 0, yaw: 0, cmd: 7 }, { buttons: 0, moveX: 0, moveY: 0, yaw: 0, cmd: 255 });
     const packed = packInputs(frames);
-    expect(packed.length).toBe(frames.length * 6);
+    expect(packed.length).toBe(frames.length * 7);
     expect(unpackInputs(packed)).toEqual(frames);
+    const v1 = frames.slice(0, 501);
+    expect(unpackInputs(packInputs(v1, 6), 6)).toEqual(v1);
   });
 
   it('기록기: 4분 넘게 돌아도 체크포인트는 최근 2개, 재생 조각은 쓰러지기 60초 전보다 앞선 체크포인트에서 시작', () => {
@@ -51,7 +53,7 @@ describe('리플레이', () => {
     const end = hashSim(sim);
     const clip = rec.clip(sim.tick);
     const bytes = await encodeReplay({
-      header: { v: 1, simVersion: __SIM_VERSION__, zone: 'test', seed: 11, classId: 'human', fromTick: clip.fromTick, showTick: clip.showTick, deathTick: sim.tick, line: 'x' },
+      header: { v: 2, simVersion: __SIM_VERSION__, zone: 'test', seed: 11, classId: 'human', fromTick: clip.fromTick, showTick: clip.showTick, deathTick: sim.tick, line: 'x' },
       snapshot: clip.snapshot,
       inputs: clip.inputs,
     });

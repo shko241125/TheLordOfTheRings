@@ -10,6 +10,9 @@ import { loadCharacter, type RigId } from './render/character';
 import { createGoblins, type Impostor } from './render/goblins';
 import { createDurinUI } from './render/durin';
 import { createCollapseView } from './render/collapse';
+import { createArrowView } from './render/arrows';
+import { TROLL_HP } from './sim/troll';
+import { CAPTAIN_HP } from './sim/captain';
 import { createHordeView } from './render/horde';
 import { createHud, createMinimap } from './render/hud';
 import { createTrolls } from './render/troll';
@@ -24,12 +27,18 @@ import { nearestInteractable, progressOf, restoreProgress } from './sim/interact
 import { TEST_ROOM } from './sim/level';
 import { BTN_LOCK, BTN_WORD, createSim, hashSim, stepSim } from './sim/sim';
 import { createTouch } from './core/touch';
-import { ZONE1 } from './sim/zone1';
+import { ZONES, ZONE_NAMES } from './sim/zones';
+import { TREES, restoreGear, restoreGrowth } from './sim/growth';
+import type { ZoneId } from './sim/level';
 import { clearSave, loadSave, writeSave } from './save';
 import { createSettingsPanel } from './render/settingsPanel';
+import { createSkillPanel } from './render/skillPanel';
+import { createGearPanel } from './render/gearPanel';
+import { createLootView } from './render/loot';
+import { GRADE_NAMES } from './sim/items';
 import { loadSettings, saveSettings, type Settings } from './settings';
 import { addToBook, deathLine, type Killer } from './replay/book';
-import { decodeReplay, encodeReplay, type Replay } from './replay/codec';
+import { REPLAY_VERSION, decodeReplay, encodeReplay, type Replay } from './replay/codec';
 import { createRecorder } from './replay/recorder';
 import { loadReplay, saveReplay } from './replay/storage';
 import { restoreSim } from './sim/snapshot';
@@ -73,10 +82,21 @@ async function boot() {
   }
   // 구역: 기본은 구역 1. ?zone=test 는 M0~M1 시험 방 (결정성 골든·전투 검증용 — 저장하지 않는다)
   const testRoom = replay ? replay.header.zone === 'test' : qs.get('zone') === 'test';
-  const level = testRoom ? TEST_ROOM : ZONE1;
-  if (qs.get('new') === '1') clearSave();
+  if (qs.get('new') === '1') {
+    clearSave();
+    // 주소에 new=1이 남아 있으면 이후 새로고침(쓰러진 뒤 R, 구역 이동)마다 저장이 지워져 처음부터 다시 시작했다 → 지운 직후 주소에서 뺀다
+    const q = new URLSearchParams(location.search);
+    q.delete('new');
+    history.replaceState(null, '', `${location.pathname}${q.toString() ? `?${q}` : ''}${location.hash}`);
+  }
   const save = testRoom || replay ? null : loadSave();
   const noSave = testRoom || !!replay;
+  // 구역: 리플레이 → 기록의 구역, 아니면 저장의 구역 (구역 이동은 저장 + 새로고침), 새 게임은 구역 1
+  const zoneId: ZoneId = replay && replay.header.zone !== 'test' ? replay.header.zone : (save?.zone ?? 'zone1');
+  const level = testRoom ? TEST_ROOM : ZONES[zoneId];
+  if (!testRoom) start.firstChild!.textContent = `${ZONE_NAMES[zoneId]}(으)로 내려가는 중…`;
+  // 구역별 진행 상태 (저장할 때 이 구역 것만 바꿔 쓴다)
+  const progressAll = { ...(save?.progress ?? {}) };
   // 이어하기면 저장의 종족을 따른다 (URL로 바꾸려면 ?new=1)
   const classId = replay?.header.classId ?? save?.classId ?? param<ClassId>('class', ['human', 'dwarf', 'elf'], 'human');
   const rigId = param<RigId>('rig', ['ual', 'kaykit'], 'ual');
@@ -88,7 +108,20 @@ async function boot() {
   await RAPIER.init();
   const { renderer, backend } = await createRenderer(canvas, forceWebGL);
   const sim = replay ? restoreSim(level, replay.header.seed, classId, replay.snapshot) : createSim(level, WORLD_SEED, classId);
-  if (save) restoreProgress(sim, save.progress);
+  if (save) {
+    const pr = save.progress[zoneId];
+    restoreProgress(sim, pr ?? { doorsOpen: [], lit: [], checkpoint: -1, bossesDown: [], lampsLit: [] }, save.entry);
+    restoreGear(sim, save.gear);
+    restoreGrowth(sim, save.growth);
+  }
+  const growthOf = () => ({ level: sim.player.level, xp: sim.player.xp, points: sim.player.points, skills: [...sim.player.skills] });
+  const gearOf = () => ({ inventory: sim.player.inventory, equipped: sim.player.equipped, gold: sim.player.gold, mithril: sim.player.mithril });
+  /** 저장: 이 구역 진행 상태 + 성장. 구역을 옮길 때는 옮겨 갈 구역·입구를 준다 */
+  const saveNow = (zone: ZoneId = zoneId, entry: string | null = save?.entry ?? null) => {
+    if (noSave) return false;
+    progressAll[zoneId] = progressOf(sim);
+    return writeSave({ classId, zone, entry, progress: progressAll, growth: growthOf(), gear: gearOf() });
+  };
   if (replay) {
     // 체크포인트에서 '보여 줄 시작'(쓰러지기 60초 전)까지 그리지 않고 빨리 감는다 (최대 2분치 ≈ 1~2초)
     while (sim.tick < replay.header.showTick) {
@@ -110,6 +143,8 @@ async function boot() {
   // 트롤은 플레이어용으로 리타게팅한 강공격·수평 베기 클립을 빌린다 (같은 UAL 골격일 때만)
   const hordeView = await createHordeView(sim, gs.scene);
   const collapseView = createCollapseView(sim, gs.scene);
+  const arrowView = createArrowView(sim, gs.scene);
+  const lootView = createLootView(sim, gs.scene);
   const trolls = await createTrolls(sim, gs.scene, rigId === 'ual' ? { slam: rig.actions.heavy, sweep: rig.actions.light3 } : null);
   const hud = createHud();
   const follow = createFollowCamera();
@@ -199,6 +234,16 @@ async function boot() {
     }
     // 쓰러지면 새로고침 → 저장(마지막 화로)에서 다시 시작
     if (e.code === 'KeyR' && sim.player.action === 'dead') location.reload();
+    // Tab: 스킬 창, I: 장비 창 (일시정지 화면 안) — 마우스로 고르도록 포인터 잠금을 푼다
+    if (e.code === 'Tab' || e.code === 'KeyI') {
+      e.preventDefault();
+      const panel = e.code === 'Tab' ? skillPanel : gearPanel;
+      const other = e.code === 'Tab' ? gearPanel : skillPanel;
+      if (!panel.open) document.exitPointerLock?.();
+      other.close();
+      start.style.display = 'grid';
+      panel.toggle();
+    }
     if (e.code === 'KeyB' && replayState === 'ready') gotoReplay();
     if (e.code === settings.keys.interact && nearestInteractable(sim)?.kind === 'door') {
       e.preventDefault(); // 이 E가 방금 포커스를 받은 입력창에 'e'로 들어가지 않게
@@ -220,6 +265,25 @@ async function boot() {
     collapseView.setPalette(s.colorSafe);
   };
   createSettingsPanel(start, settings, applySettings);
+  const skillPanel = createSkillPanel(
+    start,
+    classId,
+    () => sim.player,
+    () => {
+      const t = nearestInteractable(sim);
+      return t?.kind === 'brazier' && t.lit;
+    },
+    (cmd) => input.command(cmd),
+  );
+  const gearPanel = createGearPanel(
+    start,
+    () => sim.player,
+    () => {
+      const t = nearestInteractable(sim);
+      return t?.kind === 'brazier' && t.lit;
+    },
+    (cmd) => input.command(cmd),
+  );
   // 터치 조작 (모바일 Low 단계): 터치 기기이거나 ?touch=1. 포인터 잠금이 없으므로 시작 화면은 탭으로 닫고 ❚❚로 다시 연다
   const touchMode = matchMedia('(pointer: coarse)').matches || qs.get('touch') === '1';
   const touch = touchMode && !replay ? createTouch(input.view, () => { if (nearestInteractable(sim)?.kind === 'door') durin.open(); }) : null;
@@ -231,6 +295,18 @@ async function boot() {
     start.firstChild!.textContent = '탭해서 모리아로 들어가기';
   }
   let autoLockAt = 0;
+  /** 보스 체력바: 깨어 있는 보스 하나 (트롤·대장) */
+  const BOSS_NAME: Record<string, string> = { troll: '동굴 트롤', captain: '고블린 대장' };
+  const BOSS_MAX: Record<string, number> = { troll: TROLL_HP, captain: CAPTAIN_HP };
+  const bossBar = () => {
+    for (const id of sim.bosses) {
+      const e = sim.enemies.find((x) => x.id === id);
+      if (!e) continue;
+      const awake = e.ai !== 'patrol' && e.ai !== 'dead' && e.ai !== 'suspicious';
+      if (awake) return { name: BOSS_NAME[e.kind] ?? '', hp: e.hp, max: BOSS_MAX[e.kind] ?? e.hp, awake };
+    }
+    return null;
+  };
   applySettings(settings);
   // 셰이더 예열: 처음 나타나는 순간(물결·트롤·섬광)에 파이프라인을 만들며 멈추지 않게, 모든 메시를 잠시 보이게 해 미리 컴파일한다.
   // compileAsync는 실제 렌더처럼 숨긴 것·시야 밖·개수 0 인스턴스를 건너뛴다. 광원은 건드리지 않는다 (광원 구성이 바뀌면 다른 셰이더가 된다)
@@ -350,9 +426,36 @@ async function boot() {
       collapseView.onEvent(ev);
       audio.event(ev);
       if (ev.type === 'rest') {
-        const saved = !noSave && writeSave(classId, progressOf(sim));
+        const saved = saveNow();
         hud.toast(`${ev.first ? '화로가 타오른다' : '불 곁에서 쉬었다'}${saved ? ' · 저장됨' : ''}`, 1.6);
-      } else if (ev.type === 'door') hud.toast('두린의 문이 열린다', 1.6);
+      } else if (ev.type === 'door') hud.toast(sim.level.lampDoors?.includes(ev.door) ? '북문이 열린다' : '두린의 문이 열린다', 1.8);
+      else if (ev.type === 'lamp') hud.toast(ev.allLit ? '세 등불이 모두 타오른다' : `등불이 타오른다 (${sim.lamps.filter((l) => l.lit).length}/${sim.lamps.length})`, 1.8);
+      if (ev.type === 'levelUp' || ev.type === 'skill') skillPanel.refresh();
+      if (ev.type === 'gear' || ev.type === 'pickup') gearPanel.refresh();
+      if (ev.type === 'pickup') {
+        if (ev.kind === 'item') hud.toast(`주웠다: ${GRADE_NAMES[ev.grade]} ${ev.name} (I)`, 1.8);
+        else if (ev.kind === 'full') hud.toast('가방이 가득 찼다 (I에서 버리기)', 1.8);
+        else hud.toast(ev.kind === 'gold' ? `금화 +${ev.amount}` : `미스릴 +${ev.amount}`, 1);
+      } else if (ev.type === 'gear') {
+        hud.toast({ equip: '장착', unequip: '해제', drop: '버렸다', upgrade: '강화' }[ev.what] + `: ${ev.name}`, 1.4);
+      }
+      if (ev.type === 'levelUp') hud.toast(`레벨 ${ev.level} — 스킬 포인트 +1 (Tab)`, 2.2);
+      if (ev.type === 'skill') hud.toast(ev.index < 0 ? '스킬을 모두 되돌렸다' : `배웠다: ${TREES[classId].nodes[ev.index]!.name}`, 1.6);
+      else if (ev.type === 'exitLocked') hud.toast(ev.reason, 2.4);
+      else if (ev.type === 'exit') {
+        if (ev.to === 'end') {
+          saveNow();
+          start.innerHTML = `여기까지가 지금의 모리아다<small>21번째 홀의 북문 너머 — 마자르불의 방은 아직 어둠 속에 있다.<br>레벨 ${sim.player.level} · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>`;
+          start.style.display = 'grid';
+          document.exitPointerLock?.();
+        } else {
+          // 구역 이동: 옮겨 갈 구역·입구로 저장하고 다시 부팅 (같은 페이지 안 적재/해제 대신 — 새는 자원이 없다)
+          saveNow(ev.to as ZoneId, ev.entry);
+          start.innerHTML = `${ZONE_NAMES[ev.to as ZoneId]}(으)로 가는 중…`;
+          start.style.display = 'grid';
+          setTimeout(() => location.reload(), 250);
+        }
+      }
       else if (ev.type === 'pillar') gs.breakPillar(ev.solid);
       else if (ev.type === 'companion') {
         hud.toast(`${ev.who}: ${ev.line}`, 1.6);
@@ -364,9 +467,10 @@ async function boot() {
         shake = Math.max(shake, 0.6 * Math.max(0.2, 1 - Math.hypot(t.x - c.x, t.z - c.z) / 16));
       }
       else if (ev.type === 'death' && sim.bosses.includes(ev.enemy)) {
-        const saved = !noSave && writeSave(classId, progressOf(sim)); // 보스 처치는 바로 저장
-        hud.toast(`동굴 트롤을 쓰러뜨렸다${saved ? ' · 저장됨' : ''}`, 3);
-      }
+        const saved = saveNow(); // 보스 처치는 바로 저장
+        const kind = sim.enemies.find((e) => e.id === ev.enemy)?.kind;
+        hud.toast(`${kind === 'captain' ? '고블린 대장' : '동굴 트롤'}을 쓰러뜨렸다${saved ? ' · 저장됨' : ''}`, 3);
+      } else if (ev.type === 'whistle') hud.toast('대장이 휘파람을 분다 — 무리가 몰려온다!', 2.2);
       if (ev.type === 'slam') {
         const t = sim.player.body.translation();
         shake = Math.max(shake, 0.5 * Math.max(0.2, 1 - Math.hypot(t.x - ev.x, t.z - ev.z) / 14));
@@ -396,7 +500,7 @@ async function boot() {
         if (import.meta.env.DEV) sessionStorage.setItem('moria.replayEndHash', String(hashSim(sim)));
         void encodeReplay({
           header: {
-            v: 1, simVersion: __SIM_VERSION__, zone: testRoom ? 'test' : 'zone1', seed: WORLD_SEED, classId,
+            v: REPLAY_VERSION, simVersion: __SIM_VERSION__, zone: testRoom ? 'test' : zoneId, seed: WORLD_SEED, classId,
             fromTick: clip.fromTick, showTick: clip.showTick, deathTick, line: deathLineText,
           },
           snapshot: clip.snapshot,
@@ -462,7 +566,7 @@ async function boot() {
       looseList.push(q ? { x: t.x, y: t.y, z: t.z, qx: q.x, qy: q.y, qz: q.z, qw: q.w } : { x: t.x, y: t.y - 0.1, z: t.z, ...LYING });
     }
     gs.update(view, looseList, holding);
-    gs.props(dt, sim.doors.map((d) => d.open), sim.braziers.map((b) => b.lit), view);
+    gs.props(dt, sim.doors.map((d) => d.open), sim.braziers.map((b) => b.lit), view, sim.lamps.map((l) => l.lit));
 
     // --- 돌의 감각 (후처리 음파 + 움직이는 고블린 드러내기) ---
     const st = sense.start < 0 ? -1 : (now - sense.start) / 1000;
@@ -480,7 +584,9 @@ async function boot() {
     hordeView?.sense(sense.x, sense.z, senseR, senseS);
     hordeView?.update(animDt, sim.hitstop > 0 ? 1 : alpha, gs.seen, impostors);
     collapseView.update(animDt);
-    hud.boss(trolls.boss()); // 방 가시성은 지난 프레임 cull 결과 (1프레임 지연)
+    arrowView.update();
+    lootView.update(animDt);
+    hud.boss(bossBar()); // 방 가시성은 지난 프레임 cull 결과 (1프레임 지연)
 
     // --- 스팅 경보: 20m 안에 살아 있는 적이 있으면 칼날이 푸르게 (가까울수록 밝게) ---
     if (dressing.blade) {

@@ -1,3 +1,4 @@
+import { greatStairs, pedestal, pillar, room } from './build';
 import type { EnemySpawn, Level, Portal, Room, Solid, Vec3 } from './level';
 
 /**
@@ -6,69 +7,6 @@ import type { EnemySpawn, Level, Portal, Room, Solid, Vec3 } from './level';
  * 좌표: −Z가 안쪽(북). 방의 벽·바닥·천장은 전부 방 경계 안에 만든다 → 렌더가 방 단위로 숨겨도 이웃 방에 구멍이 없다.
  */
 
-const T = 0.5; // 벽 두께
-
-type Side = 'n' | 's' | 'e' | 'w';
-/** 벽 구멍: side 벽에서 가로 중심 c, 폭 w, 세로 절대 높이 y0..y1 */
-type Opening = { side: Side; c: number; w: number; y0: number; y1: number };
-
-/** 방 하나의 바닥·천장·네 벽 (구멍 제외). ceiling=false면 하늘이 뚫린 바깥 */
-function room(min: Vec3, max: Vec3, openings: Opening[] = [], ceiling = true): Solid[] {
-  const [x0, y0, z0] = min;
-  const [x1, y1, z1] = max;
-  const out: Solid[] = [
-    { kind: 'box', pos: [(x0 + x1) / 2, y0 - 0.5, (z0 + z1) / 2], half: [(x1 - x0) / 2, 0.5, (z1 - z0) / 2], surface: 'floor' },
-  ];
-  if (ceiling) out.push({ kind: 'box', pos: [(x0 + x1) / 2, y1 + 0.5, (z0 + z1) / 2], half: [(x1 - x0) / 2, 0.5, (z1 - z0) / 2], surface: 'ceiling' });
-
-  // 벽 하나 = 가로축(a) 구간 [a0, a1], 두께 방향 위치 fixed. 구멍마다 좌우로 자르고, 구멍 위·아래를 채운다
-  const wall = (side: Side) => {
-    const alongX = side === 'n' || side === 's';
-    const a0 = alongX ? x0 : z0;
-    const a1 = alongX ? x1 : z1;
-    const fixed = side === 'n' ? z0 + T / 2 : side === 's' ? z1 - T / 2 : side === 'w' ? x0 + T / 2 : x1 - T / 2;
-    const piece = (b0: number, b1: number, h0: number, h1: number) => {
-      if (b1 - b0 <= 1e-6 || h1 - h0 <= 1e-6) return;
-      const mid = (b0 + b1) / 2;
-      const hy = (h1 - h0) / 2;
-      out.push(
-        alongX
-          ? { kind: 'box', pos: [mid, h0 + hy, fixed], half: [(b1 - b0) / 2, hy, T / 2], surface: 'wall' }
-          : { kind: 'box', pos: [fixed, h0 + hy, mid], half: [T / 2, hy, (b1 - b0) / 2], surface: 'wall' },
-      );
-    };
-    const holes = openings.filter((o) => o.side === side).sort((p, q) => p.c - q.c);
-    let cursor = a0;
-    for (const o of holes) {
-      piece(cursor, o.c - o.w / 2, y0, y1);
-      piece(o.c - o.w / 2, o.c + o.w / 2, y0, o.y0); // 구멍 아래 (높이가 다른 방으로 이어질 때)
-      piece(o.c - o.w / 2, o.c + o.w / 2, o.y1, y1); // 구멍 위 (상인방)
-      cursor = o.c + o.w / 2;
-    }
-    piece(cursor, a1, y0, y1);
-  };
-  (['n', 's', 'e', 'w'] as const).forEach(wall);
-  return out;
-}
-
-/** 거대 계단: 20단 × 0.2m = 4m, 단 깊이 0.45m. 남쪽(z0)에서 북쪽으로 오른다. 이어서 윗단(층계참) */
-function greatStairs(zStart: number, zLanding: number, halfW: number): Solid[] {
-  const out: Solid[] = [];
-  const rise = 0.2;
-  const depth = 0.45;
-  for (let i = 0; i < 20; i++) {
-    const top = rise * (i + 1);
-    out.push({ kind: 'box', pos: [0, top / 2, zStart - i * depth - depth / 2], half: [halfW, top / 2, depth / 2], surface: 'stone' });
-  }
-  const zEnd = zStart - 20 * depth;
-  out.push({ kind: 'box', pos: [0, 2, (zEnd + zLanding) / 2], half: [halfW, 2, (zEnd - zLanding) / 2], surface: 'stone' });
-  return out;
-}
-
-const pillar = (x: number, z: number, y0: number, h: number, r = 0.9): Solid => ({ kind: 'cylinder', pos: [x, y0 + h / 2, z], radius: r, halfHeight: h / 2, surface: 'stone' });
-/** 화로 받침 (돌 원기둥 0.9m) — 그릇·불은 렌더가 위에 얹는다 */
-const pedestal = ([x, y, z]: Vec3): Solid => ({ kind: 'cylinder', pos: [x, y + 0.45, z], radius: 0.45, halfHeight: 0.45, surface: 'stone' });
-
 // --- 방 경계 ---
 const OUTSIDE: Room = { name: '서문 밖', min: [-12, 0, 40], max: [12, 20, 56] };
 const HALL: Room = { name: '입구 홀', min: [-10, 0, 24], max: [10, 8, 40] };
@@ -76,6 +14,8 @@ const STAIRS: Room = { name: '거대 계단', min: [-3, 0, 4], max: [3, 9, 24] }
 const PILLARS: Room = { name: '기둥 홀', min: [-16, 4, -26], max: [16, 14, 4] };
 const TROLL: Room = { name: '트롤 굴', min: [-12, 4, -50], max: [12, 16, -26] };
 // 기둥 홀 양옆의 고블린 굴 (폭 3m, 안쪽 2m) — 물결이 나오는 곳. 입구마다 금 간 기둥이 있다
+// 트롤 굴 북쪽 통로 → 구역 2 (21번째 홀). 트롤을 쓰러뜨려야 지나갈 수 있다
+const NORTH: Room = { name: '북쪽 통로', min: [-3, 4, -66], max: [3, 10, -50] };
 const WEST: Room = { name: '서쪽 굴', min: [-30, 4, -13.5], max: [-16, 8, -10.5] };
 const EAST: Room = { name: '동쪽 굴', min: [16, 4, -13.5], max: [30, 8, -10.5] };
 
@@ -95,6 +35,7 @@ const portals: Portal[] = [
   { a: 3, b: 4, min: [-2, 4, -26.5], max: [2, 8, -25.5] },
   { a: 3, b: 5, min: [-16.5, 4, -13.5], max: [-15, 7, -10.5] },
   { a: 3, b: 6, min: [15, 4, -13.5], max: [16.5, 7, -10.5] },
+  { a: 4, b: 7, min: [-2, 4, -50.5], max: [2, 8, -49.5] },
 ];
 
 const solids: Solid[] = [
@@ -117,7 +58,11 @@ const solids: Solid[] = [
   ...room(WEST.min, WEST.max, [{ side: 'e', c: -12, w: 3, y0: 4, y1: 7 }]),
   ...room(EAST.min, EAST.max, [{ side: 'w', c: -12, w: 3, y0: 4, y1: 7 }]),
   ...[-12, -6, 6, 12].flatMap((x) => [pillar(x, -18, 4, 10), pillar(x, -6, 4, 10)]),
-  ...room(TROLL.min, TROLL.max, [{ side: 's', c: 0, w: 4, y0: 4, y1: 8 }]),
+  ...room(TROLL.min, TROLL.max, [
+    { side: 's', c: 0, w: 4, y0: 4, y1: 8 },
+    { side: 'n', c: 0, w: 4, y0: 4, y1: 8 },
+  ]),
+  ...room(NORTH.min, NORTH.max, [{ side: 's', c: 0, w: 4, y0: 4, y1: 8 }]),
   ...BRAZIERS.map(pedestal),
 ];
 // 트롤 굴 기둥 4개: 트롤의 내려찍기에 부서진다 (숨을 곳이자 한정된 자원)
@@ -135,6 +80,7 @@ const enemies: EnemySpawn[] = [
 ];
 
 export const ZONE1: Level = {
+  id: 'zone1',
   solids,
   torches: [
     // 입구 홀 (벽 안쪽 면 ±9.5 → 0.6m 안)
@@ -153,7 +99,7 @@ export const ZONE1: Level = {
   spawnPoints: [
     [-27, 5, -12], [27, 5, -12], [-13, 5, 1], [13, 5, 1], [-8, 5, -48], [8, 5, -48],
   ],
-  rooms: [OUTSIDE, HALL, STAIRS, PILLARS, TROLL, WEST, EAST],
+  rooms: [OUTSIDE, HALL, STAIRS, PILLARS, TROLL, WEST, EAST, NORTH],
   // 금 간 기둥: 굴 입구 앞에서 북쪽(−Z)으로 쓰러져 입구를 막는다. 굴 안쪽을 봉쇄 — 주 동선(x = 0)과 무관
   collapses: [
     { pos: [-14.7, 4, -8.2], radius: 0.7, height: 8, dir: [0, -1], hp: 50, seals: [-30, 3, -13.5, -16.2, 9, -10.5] },
@@ -165,6 +111,9 @@ export const ZONE1: Level = {
   braziers: BRAZIERS,
   // 동굴 트롤: 굴 안쪽에서 잠들어 있다
   bosses: [{ kind: 'troll', pos: [0, 6, -45] }],
+  // 구역 2에서 돌아오면 북쪽 통로에 남쪽(트롤 굴 쪽)을 보고 선다
+  entries: { north: { pos: [0, 5.2, -60], facing: 2048 } },
+  exits: [{ min: [-3, 3, -66], max: [3, 10, -63.5], to: 'zone2', entry: 'south', requires: ['bosses'], locked: '동굴 트롤이 길을 지키고 있다' }],
   // 절정마다 40마리 물결 (계획서: PC 200 / 모바일 60 — 구역 1은 튜토리얼 강도)
   horde: { size: 40 },
   breakable,

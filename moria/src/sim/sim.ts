@@ -4,14 +4,17 @@ import { createRng, fnv1a, streamSeed } from '../core/rng';
 import { CLASS_STATS, type ClassId } from './classes';
 import { INPUT_BUFFER_TICKS, RIPOSTE_MULT, STAMINA_MAX, inArc, isActive } from './combat';
 import { createDirector, stepDirector } from './director';
-import { createEnemy, damageEnemy, stepEnemies } from './enemy';
+import { createEnemy, damageEnemy, enemyRadius, stepEnemies } from './enemy';
 import type { Level } from './level';
 import { makeController } from './move';
 import { buildNavMesh } from './nav';
 import { allLights, emitNoise, lightAt, pruneNoise } from './perception';
 import { stepPlayer } from './player';
-import { stepInteract } from './interact';
-import { TROLL_CAPSULE, bossAwake } from './troll';
+import { nearestInteractable, stepExits, stepInteract } from './interact';
+import { BASE_MODS, XP, addXp, applyCommand } from './growth';
+import { bossAwake } from './troll';
+import { stepArrows } from './archer';
+import { DARK_EMA, stepLoot } from './gear';
 import { createHorde, stepHorde } from './horde';
 import { createCollapses, createNavBlock, damageCollapse, stepCollapses } from './collapse';
 import { callCompanion } from './companion';
@@ -67,6 +70,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
 
   const nav = buildNavMesh(level);
   const sim: Sim = {
+    level,
     tick: 0,
     world,
     rng: createRng(streamSeed(seed, 'sim')),
@@ -79,6 +83,8 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
       heavyCharge: 0, charging: false, hitSet: new Set(), buffer: null, prevButtons: 0,
       lockTarget: -1, riposteUntil: -1, dodgeDirX: 0, dodgeDirZ: 0,
       heldTorch: -1, spareTorches: 2, senseReadyAt: 0, companion: 0,
+      level: 1, xp: 0, points: 0, skills: [], mods: { ...BASE_MODS },
+      inventory: [], equipped: [null, null, null, null, null, null], gold: 0, mithril: 0, darkness: 0,
     },
     enemies: [],
     enemyController: makeController(world),
@@ -100,12 +106,20 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
     bosses: [],
     horde: createHorde(level, nav),
     collapses: [],
+    arrows: [],
+    nextArrowId: 0,
+    loot: [],
+    nextLootId: 0,
+    nextItemId: 0,
+    lamps: (level.lamps ?? []).map(([x, y, z]) => ({ x, y, z, lit: false })),
+    exited: false,
+    exitLockedShown: false,
     navBlock: createNavBlock(),
     classId,
   };
   // 붕괴 기둥: 레벨·문 바디 다음, 플레이어보다 뒤 — 생성 순서 고정 (결정성 규칙 4)
   sim.collapses.push(...createCollapses(sim, level));
-  (level.enemies ?? []).forEach((e, i) => sim.enemies.push(createEnemy(sim, i, [...e.pos], e.patrol.map((p) => [...p] as [number, number, number]))));
+  (level.enemies ?? []).forEach((e, i) => sim.enemies.push(createEnemy(sim, i, [...e.pos], e.patrol.map((p) => [...p] as [number, number, number]), e.kind ?? 'goblin')));
   (level.bosses ?? []).forEach((b, i) => {
     const id = (level.enemies?.length ?? 0) + i;
     sim.enemies.push(createEnemy(sim, id, [...b.pos], [[...b.pos]], b.kind));
@@ -122,7 +136,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
 export const DARK_BONUS = 0.5;
 export function darkMultiplier(sim: Sim, lights: readonly SimLight[]): number {
   const t = sim.player.body.translation();
-  return 1 + DARK_BONUS * (1 - lightAt(t.x, t.y + 0.3, t.z, lights));
+  return 1 + (DARK_BONUS + sim.player.mods.dark) * (1 - lightAt(t.x, t.y + 0.3, t.z, lights));
 }
 
 /** 플레이어 공격의 판정 구간: 부채꼴 안의 적에게 한 번씩 피해 */
@@ -134,12 +148,13 @@ function resolvePlayerAttack(sim: Sim, lights: readonly SimLight[]) {
   for (const e of sim.enemies) {
     if (e.ai === 'dead' || p.hitSet.has(e.id)) continue;
     const t = e.body.translation();
-    const radius = e.kind === 'troll' ? TROLL_CAPSULE.radius : 0.3;
+    const radius = e.kind === 'goblin' || e.kind === 'archer' ? 0.3 : enemyRadius(e.kind);
     if (!inArc(me.x, me.y, me.z, p.facing, t.x, t.y, t.z, radius, a.reach, a.halfArc)) continue;
     p.hitSet.add(e.id);
     const riposte = sim.tick < p.riposteUntil;
     const dark = darkMultiplier(sim, lights);
-    const dmg = Math.round(a.damage * (riposte ? RIPOSTE_MULT : 1) * dark);
+    const m = p.mods;
+    const dmg = Math.round(a.damage * m.dmg * (a.id === 'heavy' ? m.heavy : 1) * (riposte ? RIPOSTE_MULT + m.riposte : 1) * dark);
     if (riposte) p.riposteUntil = -1;
     damageEnemy(sim, e, dmg);
     sim.hitstop = Math.max(sim.hitstop, riposte ? a.hitstop + 4 : a.hitstop);
@@ -168,13 +183,19 @@ function resolvePlayerAttack(sim: Sim, lights: readonly SimLight[]) {
     });
     if (cut) {
       sim.hitstop = Math.max(sim.hitstop, a.hitstop);
-      p.companion = Math.min(100, p.companion + cut);
+      p.companion = Math.min(100, p.companion + cut * p.mods.ally);
+      addXp(sim, cut * XP.horde);
     }
   }
 }
 
 export function stepSim(sim: Sim, input: InputFrame): void {
   if (sim.events.length > MAX_EVENTS) sim.events.splice(0, sim.events.length - MAX_EVENTS);
+  // UI 명령 (스킬 배우기·초기화) — 히트스톱이어도 받는다
+  if (input.cmd) {
+    const near = nearestInteractable(sim);
+    applyCommand(sim, input.cmd, near?.kind === 'brazier' && near.lit);
+  }
   if (sim.hitstop > 0) {
     // 히트스톱: 세상은 멈추지만 입력은 흘려보내지 않는다 (누른 순간을 버퍼에 담는다)
     sim.hitstop--;
@@ -184,13 +205,21 @@ export function stepSim(sim: Sim, input: InputFrame): void {
   }
   const lights = allLights(sim);
   sim.director.cameraYaw = input.yaw;
+  // 어둠 비율 (전리품 등급 — 빛의 도박): 가슴 높이 밝기 0.2 미만이면 어둠
+  {
+    const t = sim.player.body.translation();
+    sim.player.darkness = sim.player.darkness * DARK_EMA + (lightAt(t.x, t.y + 0.3, t.z, lights) < 0.2 ? 1 - DARK_EMA : 0);
+  }
   const pressed = input.buttons & ~sim.player.prevButtons; // stepPlayer가 prevButtons를 갱신하기 전에
   stepPlayer(sim, input);
   stepInteract(sim, pressed);
+  stepExits(sim);
   if ((pressed & BTN_CALL) !== 0) callCompanion(sim, sim.classId);
   resolvePlayerAttack(sim, lights);
   stepEnemies(sim, lights);
   stepHorde(sim, lights);
+  stepArrows(sim);
+  stepLoot(sim);
   stepCollapses(sim);
   // 문이 닫힌 동안(서문 밖)은 디렉터가 쉰다 — 내비메시는 문을 열린 상태로 보므로 물결이 문에 막혀 버린다
   // 보스전 중에도 쉰다 (L4D의 보스 이벤트처럼 물결과 겹치지 않게)
@@ -233,9 +262,19 @@ export function hashSim(sim: Sim): number {
   for (const e of sim.enemies) {
     h = mix(h, e.id, e.hp, e.awareness, e.facing, e.vx, e.vz, e.aiTick, e.swingTick, e.hasToken ? 1 : 0, e.cooldownUntil);
     if (e.kind === 'troll') h = mix(h, ['', 'slam', 'sweep'].indexOf(e.move), e.aimX, e.aimZ);
+    else if (e.kind !== 'goblin') h = mix(h, ['', 'slam', 'sweep', 'shoot', 'combo', 'charge'].indexOf(e.move), e.aimX, e.aimZ, e.step, e.used);
   }
   for (const p of sim.pillars) h = mix(h, p.body ? 1 : 0);
-  h = mix(h, p.companion);
+  h = mix(h, p.companion, p.level, p.xp, p.points, p.maxHp, ...p.skills);
+  if (p.inventory.length || p.gold || p.mithril || sim.loot.length || sim.nextItemId || p.equipped.some(Boolean)) {
+    h = mix(h, p.gold, p.mithril, p.darkness, sim.loot.length, sim.nextLootId, sim.nextItemId, ...p.inventory.map((i) => i.id), ...p.equipped.map((i) => (i ? i.id * 8 + i.upgrade : -1)));
+    for (const l of sim.loot) h = mix(h, l.id, l.x, l.z, l.ttl);
+  }
+  if (sim.arrows.length || sim.nextArrowId) {
+    h = mix(h, sim.arrows.length, sim.nextArrowId);
+    for (const a of sim.arrows) h = mix(h, a.id, a.x, a.y, a.z, a.ttl);
+  }
+  if (sim.lamps.length) h = mix(h, ...sim.lamps.map((l) => (l.lit ? 1 : 0)), sim.exited ? 1 : 0);
   for (const c of sim.collapses) {
     h = mix(h, c.hp, ['standing', 'falling', 'down'].indexOf(c.state), c.tick);
     for (const b of c.chunks) {

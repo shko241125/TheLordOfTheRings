@@ -1,6 +1,7 @@
 import { angleDiff, dAtan2Angle } from '../core/trig';
 import type { ClassId } from './classes';
 import { damageEnemy } from './enemy';
+import { XP, addXp } from './growth';
 import type { Sim } from './types';
 
 /**
@@ -45,8 +46,9 @@ export function callCompanion(sim: Sim, classId: ClassId): boolean {
     const t = e.body.translation();
     if (inside(t.x, t.z)) damageEnemy(sim, e, e.kind === 'troll' ? Math.round(s.damage / 2) : s.damage);
   }
-  // 동료가 쓰러뜨린 것은 게이지를 채우지 않는다
+  // 동료가 쓰러뜨린 것은 게이지를 채우지 않는다 (XP는 준다)
   p.companion = 0;
+  addXp(sim, killed * XP.horde);
   sim.events.push({ type: 'companion', tick: sim.tick, who: s.who, line: s.line, x: me.x, y: me.y, z: me.z, facing: p.facing, radius: s.radius, halfArc: s.halfArc, killed });
   return true;
 }

@@ -54,6 +54,11 @@ export function takeSnapshot(sim: Sim): SimSnapshot {
     },
     collapses: sim.collapses.map((c) => ({ hp: c.hp, state: c.state, tick: c.tick, body: handle(c.body), chunks: c.chunks.map((b) => b.handle) })),
     navBlock: [...sim.navBlock.excluded],
+    arrows: sim.arrows,
+    nextArrowId: sim.nextArrowId,
+    loot: sim.loot,
+    nextLootId: sim.nextLootId,
+    nextItemId: sim.nextItemId,
   };
   return { world: sim.world.takeSnapshot(), state: JSON.stringify(state, replacer) };
 }
@@ -72,6 +77,11 @@ const parse = (s: string) => JSON.parse(s, reviver) as {
   horde: { agents: NonNullable<Sim['horde']>['agents']; nextId: number; height: number[]; dist: number[] } | null;
   collapses: { hp: number; state: 'standing' | 'falling' | 'down'; tick: number; body: number; chunks: number[] }[];
   navBlock: number[];
+  arrows: Sim['arrows'];
+  nextArrowId: number;
+  loot: Sim['loot'];
+  nextLootId: number;
+  nextItemId: number;
 };
 
 /**
@@ -122,6 +132,11 @@ export function restoreSim(level: Level, seed: number, classId: ClassId, snap: S
   st.collapses.forEach((c, i) => {
     Object.assign(sim.collapses[i]!, { hp: c.hp, state: c.state, tick: c.tick, body: body(c.body), chunks: c.chunks.map((h) => world.getRigidBody(h)) });
   });
+  sim.arrows = st.arrows ?? [];
+  sim.nextArrowId = st.nextArrowId ?? 0;
+  sim.loot = st.loot ?? [];
+  sim.nextLootId = st.nextLootId ?? 0;
+  sim.nextItemId = st.nextItemId ?? 0;
   sim.navBlock.excluded.clear();
   for (const r of st.navBlock) sim.navBlock.excluded.add(r);
   return sim;

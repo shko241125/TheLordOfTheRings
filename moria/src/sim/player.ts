@@ -78,7 +78,7 @@ function startLight(sim: Sim, p: PlayerState, dir: ReturnType<typeof inputDir>, 
   p.attack = a;
   p.combo = index;
   p.comboQueued = false;
-  spend(p, sim, a.stamina);
+  spend(p, sim, a.stamina * p.mods.stamina);
   faceLockOrInput(sim, p, dir, ATTACK_TURN);
   const t = p.body.translation();
   emitNoise(sim, t.x, t.y, t.z, 0.5, 8, 20);
@@ -89,7 +89,7 @@ function startHeavy(sim: Sim, p: PlayerState, dir: ReturnType<typeof inputDir>) 
   startAction(p, 'attack');
   p.attack = { ...HEAVY, damage: heavyDamage(p.heavyCharge) };
   p.charging = false;
-  spend(p, sim, HEAVY.stamina);
+  spend(p, sim, HEAVY.stamina * p.mods.stamina);
   faceLockOrInput(sim, p, dir, ATTACK_TURN);
   const t = p.body.translation();
   emitNoise(sim, t.x, t.y, t.z, 0.6, 9, 20);
@@ -100,7 +100,7 @@ function startDodge(sim: Sim, p: PlayerState, dir: ReturnType<typeof inputDir>) 
   startAction(p, 'dodge');
   p.attack = null;
   p.charging = false;
-  spend(p, sim, COST_DODGE);
+  spend(p, sim, COST_DODGE * p.mods.stamina);
   if (dir.mag > 0) {
     const inv = 1 / (dir.mag * 127);
     p.dodgeDirX = dir.x * inv;
@@ -130,7 +130,7 @@ function tryAct(sim: Sim, p: PlayerState, want: Buffered['kind'], dir: ReturnTyp
     else {
       startAction(p, 'parry');
       p.attack = null;
-      spend(p, sim, COST_PARRY);
+      spend(p, sim, COST_PARRY * p.mods.stamina);
     }
     return true;
   }
@@ -241,7 +241,7 @@ export function stepPlayer(sim: Sim, input: InputFrame) {
   }
 
   // --- 스태미나 ---
-  if ((input.buttons & BTN_SPRINT) !== 0 && p.action === 'free' && !p.exhausted && dir.mag > 0) spend(p, sim, SPRINT_COST);
+  if ((input.buttons & BTN_SPRINT) !== 0 && p.action === 'free' && !p.exhausted && dir.mag > 0) spend(p, sim, SPRINT_COST * p.mods.stamina);
   if (sim.tick >= p.staminaRegenAt && p.action !== 'attack' && p.action !== 'dodge') p.stamina = Math.min(STAMINA_MAX, p.stamina + STAMINA_REGEN);
   if (p.exhausted && p.stamina >= 30) p.exhausted = false;
 
@@ -313,10 +313,10 @@ function moveAndCollide(sim: Sim, p: PlayerState) {
  */
 export const SENSE_COOLDOWN = 8 * 60;
 function stoneSense(sim: Sim, p: PlayerState) {
-  p.senseReadyAt = sim.tick + SENSE_COOLDOWN;
+  p.senseReadyAt = sim.tick + SENSE_COOLDOWN - p.mods.senseCd;
   const t = p.body.translation();
   emitNoise(sim, t.x, t.y, t.z, 0.5, 15, 180);
-  sim.events.push({ type: 'sense', tick: sim.tick, x: t.x, y: t.y, z: t.z, radius: p.stats.senseRadius });
+  sim.events.push({ type: 'sense', tick: sim.tick, x: t.x, y: t.y, z: t.z, radius: p.stats.senseRadius + p.mods.sense });
 }
 
 /** 락온: 앞쪽 가까운 살아 있는 적 (거리 + 각도 가중치). 다시 누르면 해제. */
@@ -351,8 +351,8 @@ export function hitPlayer(
   opts: { unparryable?: boolean; knockback?: number; source?: 'goblin' | 'troll' | 'collapse' } = {},
 ): 'iframe' | 'parry' | 'hit' {
   const p = sim.player;
-  if (p.action === 'dodge' && p.actionTick >= DODGE_IFRAME_FROM && p.actionTick < DODGE_IFRAME_TO) return 'iframe';
-  if (!opts.unparryable && p.action === 'parry' && p.actionTick >= PARRY_WINDOW_FROM && p.actionTick < PARRY_WINDOW_TO) {
+  if (p.action === 'dodge' && p.actionTick >= DODGE_IFRAME_FROM && p.actionTick < DODGE_IFRAME_TO + p.mods.iframe) return 'iframe';
+  if (!opts.unparryable && p.action === 'parry' && p.actionTick >= PARRY_WINDOW_FROM && p.actionTick < PARRY_WINDOW_TO + p.mods.parry) {
     // 정면 ±90°에서 온 공격만 패링된다
     const me = p.body.translation();
     const toAttacker = dAtan2Angle(-(fromX - me.x), -(fromZ - me.z));

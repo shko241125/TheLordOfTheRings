@@ -44,6 +44,8 @@ export function pruneNoise(sim: Sim) {
 const HELD_TORCH: Omit<SimLight, 'x' | 'y' | 'z'> = { intensity: 1, range: 8 };
 /** 화로는 횃불보다 넓고 밝다 → 고블린이 꺼리는 안전지대 */
 const BRAZIER: Omit<SimLight, 'x' | 'y' | 'z'> = { intensity: 1, range: 10 };
+/** 21번째 홀의 등불: 넓은 빛 — 밝힐수록 홀의 어둠(무리의 영역)이 줄어든다 */
+const LAMP: Omit<SimLight, 'x' | 'y' | 'z'> = { intensity: 1, range: 16 };
 const GROUND_TORCH: Omit<SimLight, 'x' | 'y' | 'z'> = { intensity: 0.85, range: 7 };
 
 /** 손에 든 횃불 위치: 몸 왼쪽 앞, 가슴 높이 (렌더의 실제 손 위치와 20cm 이내면 충분하다) */
@@ -57,6 +59,7 @@ export function heldTorchPos(px: number, py: number, pz: number, facing: number)
 export function allLights(sim: Sim): SimLight[] {
   const out: SimLight[] = sim.staticLights.slice();
   for (const b of sim.braziers) if (b.lit) out.push({ x: b.x, y: b.y + 1.2, z: b.z, ...BRAZIER });
+  for (const l of sim.lamps) if (l.lit) out.push({ x: l.x, y: l.y + 2, z: l.z, ...LAMP });
   for (const t of sim.torches) {
     const kind = t.state === 'held' ? HELD_TORCH : GROUND_TORCH;
     out.push({ x: t.x, y: t.y, z: t.z, ...kind });

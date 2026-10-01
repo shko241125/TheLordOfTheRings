@@ -61,7 +61,7 @@ export type GameScene = {
   /** 매 렌더 프레임: 횃불 깜빡임, 떨어진 횃불 배치, WebGL2에서는 가까운 횃불로 광원 재배치 */
   update(focus: Vector3, loose: readonly LooseTorch[], holdingTorch: boolean): void;
   /** 문 여닫이·이실딘 빛·화로 불 (시뮬레이션 상태를 그대로 받는다) */
-  props(dt: number, doorsOpen: readonly boolean[], braziersLit: readonly boolean[], player: Vector3): void;
+  props(dt: number, doorsOpen: readonly boolean[], braziersLit: readonly boolean[], player: Vector3, lampsLit?: readonly boolean[]): void;
   /** 트롤이 기둥을 부쉈다: 기둥을 숨기고 돌조각을 흩뿌린다 (렌더 전용 — 조각은 물리와 무관) */
   breakPillar(solid: number): void;
   /** 포털 컬링: 카메라가 있는 방에서 보이는 통로를 따라 닿는 방만 그린다. 보이는 방 번호 목록을 돌려준다 */
@@ -203,19 +203,22 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
   // --- 두린의 문: 돌문 두 짝 + 이실딘(달빛에만 보이는 은빛 선) ---
   const doorMat = track(new MeshStandardMaterial({ color: 0x3c3e44, roughness: 0.85 }));
   const ithildinMat = track(new MeshBasicMaterial({ color: 0x9fc4ff, transparent: true, opacity: 0 }));
+  const gateMat = track(new MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.45, metalness: 0.75 }));
   const doors = (level.doors ?? []).map((d) => {
     const [hx, hy, hz] = d.half;
     const leafGeo = track(new BoxGeometry(hx, hy * 2, hz * 1.6));
+    const gate = d.style === 'gate';
     const leaves = [-1, 1].map((side) => {
       const pivot = new Group(); // 경첩 = 문틀 양끝
       pivot.position.set(d.pos[0] + side * hx, d.pos[1], d.pos[2]);
-      const leaf = new Mesh(leafGeo, doorMat);
+      const leaf = new Mesh(leafGeo, gate ? gateMat : doorMat);
       leaf.position.x = -side * hx / 2;
       leaf.castShadow = leaf.receiveShadow = true;
       pivot.add(leaf);
       scene.add(pivot);
       return { pivot, side };
     });
+    if (gate) return { leaves, glow: null, open: 0, z: d.pos[2], x: d.pos[0] };
     // 아치 + 두 기둥 선 + 별 (바깥 면 5cm 앞)
     const glow = new Group();
     const front = d.pos[2] + hz + 0.05;
@@ -257,6 +260,28 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
     scene.add(bowl, fire);
     if (backend === 'webgpu') scene.add(light);
     return { fire, light, pos: new Vector3(x, y + 1.6, z), room: roomOf(x, y + 0.5, z), lit: false };
+  });
+
+  // --- 퀘스트 등불 (21번째 홀): 화로보다 크고, 밝히면 홀 한쪽을 넓게(24m) 밝힌다 ---
+  const lampBowlGeo = track(new CylinderGeometry(1.0, 0.6, 0.5, 20, 1, true));
+  const lampFlameGeo = track(new IcosahedronGeometry(0.28, 1));
+  const lamps = (level.lamps ?? []).map(([x, y, z]) => {
+    const bowl = new Mesh(lampBowlGeo, bowlMat);
+    bowl.position.set(x, y + 1.45, z);
+    const fire = new Group();
+    for (const [ox, oz, h] of [[0, 0, 2.2], [0.3, 0.15, 1.4], [-0.25, -0.2, 1.5], [0.05, -0.3, 1.2]] as const) {
+      const f = new Mesh(lampFlameGeo, coalMat);
+      f.position.set(ox, 0, oz);
+      f.scale.set(1, h, 1);
+      fire.add(f);
+    }
+    fire.position.set(x, y + 1.8, z);
+    fire.visible = false;
+    const light = new PointLight(0xffb060, 0, 26, 2);
+    light.position.set(x, y + 3, z);
+    scene.add(bowl, fire);
+    if (backend === 'webgpu') scene.add(light);
+    return { fire, light, pos: new Vector3(x, y + 2.4, z), room: roomOf(x, y + 0.5, z), lit: false };
   });
 
   // 플레이어가 든 횃불 광원. 그림자를 드리우는 유일한 광원이며 위치는 매 프레임 손의 불꽃에 맞춘다.
@@ -312,6 +337,7 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
         candidates.length = 0;
         candidates.push(...torchPos, ...looseFlamePos.slice(0, looseCount));
         for (const b of braziers) if (b.lit) candidates.push(b.pos);
+        for (const l of lamps) if (l.lit) candidates.push(l.pos);
         order.length = 0;
         for (let i = 0; i < candidates.length; i++) order.push(i);
         order.sort((a, b) => candidates[a]!.distanceToSquared(focus) - candidates[b]!.distanceToSquared(focus));
@@ -355,7 +381,15 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
       stump.castShadow = stump.receiveShadow = true;
       m.parent!.add(stump);
     },
-    props(dt, doorsOpen, braziersLit, player) {
+    props(dt, doorsOpen, braziersLit, player, lampsLit = []) {
+      for (let i = 0; i < lamps.length; i++) {
+        const l = lamps[i]!;
+        l.lit = !!lampsLit[i];
+        l.fire.visible = l.lit;
+        // 90은 홀 한쪽이 거의 밝아지지 않았다(스크린샷) → 220: 등불 둘레 기둥들이 드러나 무리가 설 어둠이 눈에 보이게 줄어든다
+        l.light.intensity = l.lit ? 220 * (0.88 + fx.next() * 0.12) : 0;
+        if (l.lit) l.fire.scale.y = 0.9 + fx.next() * 0.3;
+      }
       for (let i = debris.length - 1; i >= 0; i--) {
         const d = debris[i]!;
         d.life -= dt;
@@ -385,6 +419,7 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
         d.open += Math.sign(target - d.open) * Math.min(Math.abs(target - d.open), dt / 2.5); // 2.5초에 걸쳐 안쪽으로
         const ease = d.open * d.open * (3 - 2 * d.open);
         for (const l of d.leaves) l.pivot.rotation.y = l.side * -1 * ease * (Math.PI / 2);
+        if (!d.glow) continue;
         // 이실딘: 문 앞 10m 안에서 서서히 드러나고, 문이 열리면 사라진다
         const near = Math.max(0, Math.min(1, (12 - Math.hypot(player.x - d.x, player.z - d.z)) / 6));
         ithildinMat.opacity = near * (1 - d.open) * (0.75 + 0.25 * Math.sin(performance.now() / 700));
@@ -422,6 +457,7 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
       if (backend === 'webgpu') {
         for (let i = 0; i < torchLights.length; i++) torchLights[i]!.visible = torchRoom[i]! < 0 || visible[torchRoom[i]!]!;
         for (const b of braziers) b.light.visible = b.room < 0 || visible[b.room]!;
+        for (const l of lamps) l.light.visible = l.room < 0 || visible[l.room]!;
       }
       visibleList.length = 0;
       visible.forEach((v, i) => v && visibleList.push(i));
@@ -432,7 +468,7 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
       return r < 0 || visible[r]!;
     },
     roomAt: (p) => (level.rooms?.length ? roomOf(p.x, p.y, p.z) : -1),
-    stats: () => ({ torchLights: torchLights.length + dynLights.length + (backend === 'webgpu' ? braziers.length : 0), lightingMode, rooms: rooms.length }),
+    stats: () => ({ torchLights: torchLights.length + dynLights.length + (backend === 'webgpu' ? braziers.length + lamps.length : 0), lightingMode, rooms: rooms.length }),
     dispose() {
       for (const d of disposables) d.dispose();
       playerTorch.shadow.dispose();

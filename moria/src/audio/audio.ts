@@ -204,6 +204,14 @@ export function createAudio() {
       } else if (ev.type === 'pillar') {
         burst(400, 0.5, 1.8, 0.9, 80); // 돌이 무너져 내리는 소리
         tone(52, 1.2, 0.5);
+      } else if (ev.type === 'shoot') {
+        tone(640, 0.12, 0.25); // 시위 튕기는 소리
+        burst(2400, 2, 0.12, 0.35, 900);
+      } else if (ev.type === 'arrowStuck') {
+        burst(500, 2, 0.07, 0.4);
+      } else if (ev.type === 'whistle') {
+        tone(1560, 0.5, 0.18);
+        tone(1980, 0.4, 0.12);
       } else if (ev.type === 'crack') {
         burst(260, 1.2, 0.25, 0.7, 120); // 돌이 갈라지는 둔탁한 소리
       } else if (ev.type === 'collapse') {

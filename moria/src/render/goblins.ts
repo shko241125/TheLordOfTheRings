@@ -1,11 +1,13 @@
 import {
-  AnimationMixer, Box3, Color, ConeGeometry, BoxGeometry, CylinderGeometry, Group, Mesh, MeshStandardMaterial, Vector3,
+  AnimationMixer, Box3, Color, ConeGeometry, BoxGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry,
+  TorusGeometry, Vector3,
   type AnimationAction, type AnimationClip, type Camera, type Material, type Object3D,
 } from 'three/webgpu';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { angleDiff, angleToRad } from '../core/trig';
 import { GOBLIN_ATTACK } from '../sim/combat';
 import { GOBLIN_CAPSULE } from '../sim/enemy';
+import { CAPTAIN_CAPSULE, CAPTAIN_COMBO, CHARGE_WINDUP } from '../sim/captain';
 import type { Enemy, Sim } from '../sim/types';
 import { analyzeLoco, findBone, findImpact, loadGltf, makeSocket } from './character';
 import { warpAttack } from './actionTime';
@@ -20,9 +22,9 @@ const HEIGHT = 2 * (GOBLIN_CAPSULE.half + GOBLIN_CAPSULE.radius); // 1.4
 const MODEL_YAW_OFFSET = Math.PI;
 const KCC_OFFSET = 0.02;
 
-type Slot = 'idle' | 'walk' | 'run' | 'attack' | 'hit' | 'parried' | 'death';
+type Slot = 'idle' | 'walk' | 'run' | 'attack' | 'hit' | 'parried' | 'death' | 'aim';
 const CLIPS: Record<Slot, string> = {
-  idle: 'Idle_Loop', walk: 'Walk_Loop', run: 'Jog_Fwd_Loop', attack: 'Sword_Attack',
+  idle: 'Idle_Loop', walk: 'Walk_Loop', run: 'Jog_Fwd_Loop', attack: 'Sword_Attack', aim: 'Pistol_Aim_Neutral',
   hit: 'Hit_Chest', parried: 'Hit_Head', death: 'Death01',
 };
 
@@ -33,6 +35,10 @@ export type Impostor = { key: number; x: number; y: number; z: number; facing: n
 
 type One = {
   e: Enemy;
+  /** 발밑까지 내림 (종류마다 캡슐이 다르다) */
+  drop: number;
+  /** 대장 돌진 예고 띠 */
+  strip: Mesh | null;
   root: Group;
   model: Object3D;
   mixer: AnimationMixer;
@@ -65,6 +71,14 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
 
   const geos = [new ConeGeometry(0.035, 0.14, 6), new BoxGeometry(0.035, 0.5, 0.012), new CylinderGeometry(0.016, 0.016, 0.14, 6)];
   const earMat = new MeshStandardMaterial({ color: 0x4f5d3c, roughness: 0.9 });
+  const bowGeo = new TorusGeometry(0.42, 0.018, 4, 18, Math.PI * 0.85);
+  const stringGeo = new BoxGeometry(0.004, 0.78, 0.004);
+  const stringMat = new MeshBasicMaterial({ color: 0x9a9080 });
+  // 대장 돌진 예고: 바닥의 붉은 띠 (폭 1.6m, 길이 9m — 돌진 거리)
+  const stripGeo = new PlaneGeometry(1.6, 9);
+  stripGeo.translate(0, 4.5, 0);
+  stripGeo.rotateX(-Math.PI / 2); // 눕힌다: 로컬 −Z 방향으로 뻗는다
+  const stripMat = new MeshBasicMaterial({ color: 0xff3a10, transparent: true, opacity: 0, depthWrite: false });
   const bladeMat = new MeshStandardMaterial({ color: 0x6c6760, roughness: 0.6, metalness: 0.6 });
   const gripMat = new MeshStandardMaterial({ color: 0x2a1d12, roughness: 1 });
 
@@ -87,7 +101,9 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
       // 몸(주 재질)은 녹회색 피부, 관절 재질은 해진 가죽
       const skin = m.material.name === 'M_Main';
       // 올리브색(0x4d5a3a)은 주황 횃불빛 아래서 노랗게 보였다(스크린샷) → 더 짙고 채도 높은 녹색
-      const mat = new MeshStandardMaterial({ color: skin ? 0x2c4526 : 0x221a12, roughness: 0.85, emissive: new Color(0, 0, 0) });
+      // 대장: 짙은 피부 + 붉은 천 / 궁수: 조금 밝은 피부 + 가죽
+      const color = e.kind === 'captain' ? (skin ? 0x2a3320 : 0x3a100c) : e.kind === 'archer' ? (skin ? 0x34502b : 0x2e2418) : skin ? 0x2c4526 : 0x221a12;
+      const mat = new MeshStandardMaterial({ color, roughness: 0.85, emissive: new Color(0, 0, 0) });
       mats.push(mat);
       m.material = mat;
       o.castShadow = true;
@@ -107,7 +123,9 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
       const box = new Box3().setFromObject(model, true);
       scale = HEIGHT / (box.max.y - box.min.y);
     }
-    model.scale.set(scale * 1.08, scale, scale * 1.08);
+    // 대장은 키 2.0m (고블린 1.4m의 1.43배), 어깨도 넓게
+    const k = e.kind === 'captain' ? (2 * (CAPTAIN_CAPSULE.half + CAPTAIN_CAPSULE.radius)) / HEIGHT : 1;
+    model.scale.set(scale * k * (e.kind === 'captain' ? 1.15 : 1.08), scale * k, scale * k * (e.kind === 'captain' ? 1.15 : 1.08));
     pivot.rotation.x = 0.14;
     root.updateMatrixWorld(true);
 
@@ -119,14 +137,28 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
       ear.rotation.set(0, 0, -1.2 * s);
       head.add(ear);
     }
-    const hand = makeSocket({ root }, findBone(model, 'DEF-hand.R'));
-    const weapon = new Group();
-    weapon.rotation.x = 2.3;
-    const blade = new Mesh(geos[1], bladeMat);
-    blade.position.y = 0.32;
-    const grip = new Mesh(geos[2], gripMat);
-    weapon.add(blade, grip);
-    hand.add(weapon);
+    if (e.kind === 'archer') {
+      // 활: 왼손에 휘어진 활대 + 시위
+      const handL = makeSocket({ root }, findBone(model, 'DEF-hand.L'));
+      const bow = new Group();
+      const limb = new Mesh(bowGeo, gripMat);
+      limb.rotation.z = Math.PI / 2 + 0.28;
+      const string = new Mesh(stringGeo, stringMat);
+      string.position.x = -0.14;
+      bow.add(limb, string);
+      bow.rotation.set(0, Math.PI / 2, 0);
+      handL.add(bow);
+    } else {
+      const hand = makeSocket({ root }, findBone(model, 'DEF-hand.R'));
+      const weapon = new Group();
+      weapon.rotation.x = 2.3;
+      const blade = new Mesh(geos[1], bladeMat);
+      blade.position.y = 0.32;
+      const grip = new Mesh(geos[2], gripMat);
+      weapon.add(blade, grip);
+      if (e.kind === 'captain') weapon.scale.setScalar(1.7); // 큰 칼
+      hand.add(weapon);
+    }
     idle.stop();
 
     if (first) {
@@ -143,6 +175,7 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
       a.enabled = true;
       a.setEffectiveWeight(s === 'idle' ? 1 : 0);
       if (s === 'attack' || s === 'hit' || s === 'parried' || s === 'death') a.timeScale = 0; // 시간을 직접 넣는다
+      if (s === 'aim') a.timeScale = 0; // 조준 자세 한 장면 (활을 당긴 모습)
       a.play();
       acts[s] = a;
       w[s] = s === 'idle' ? 1 : 0;
@@ -155,7 +188,14 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
     parent.add(root);
     const t = e.body.translation();
     const snap = { x: t.x, y: t.y, z: t.z, f: e.facing };
-    return { e, root, model, mixer, acts, w, mats, prev: { ...snap }, curr: { ...snap }, flash: 0, revealed: false, mark, alertUntil: 0 };
+    const cap = e.kind === 'captain' ? CAPTAIN_CAPSULE : GOBLIN_CAPSULE;
+    let strip: Mesh | null = null;
+    if (e.kind === 'captain') {
+      strip = new Mesh(stripGeo, stripMat.clone());
+      strip.visible = false;
+      parent.add(strip);
+    }
+    return { e, drop: cap.half + cap.radius + KCC_OFFSET, strip, root, model, mixer, acts, w, mats, prev: { ...snap }, curr: { ...snap }, flash: 0, revealed: false, mark, alertUntil: 0 };
   };
 
   const list: One[] = [];
@@ -166,7 +206,7 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
    */
   const sync = () => {
     for (const e of sim.enemies) {
-      if (e.kind !== 'goblin' || byId.has(e.id)) continue; // 트롤은 render/troll.ts
+      if (e.kind === 'troll' || byId.has(e.id)) continue; // 트롤은 render/troll.ts (고블린·궁수·대장은 여기)
       const g = build(e);
       list.push(g);
       byId.set(e.id, g);
@@ -184,7 +224,6 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
     }
   };
   sync();
-  const drop = GOBLIN_CAPSULE.half + GOBLIN_CAPSULE.radius + KCC_OFFSET;
   const v = new Vector3();
   const near: One[] = [];
   let clock = 0;
@@ -229,6 +268,7 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
       const d2 = (g: One) => (g.curr.x - cx) ** 2 + (g.curr.z - cz) ** 2;
       if (impostors && list.length > maxSkinned) near.sort((a, b) => d2(a) - d2(b));
       const skinned = new Set(impostors ? near.slice(0, maxSkinned) : near);
+      for (const g of list) if (g.e.kind === 'captain') skinned.add(g); // 보스는 늘 제 모습으로
       for (const g of list) {
         const e = g.e;
         // 위치·방향 보간
@@ -239,11 +279,21 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
         if (!g.root.visible) {
           g.mark.style.display = 'none';
           if (impostors && e.ai !== 'dead' && seen(x, y, z)) {
-            impostors.push({ key: -1 - e.id, x, y: y - drop, z, facing: g.prev.f + angleDiff(g.prev.f, g.curr.f) * alpha, speed: Math.hypot(e.vx, e.vz) });
+            impostors.push({ key: -1 - e.id, x, y: y - g.drop, z, facing: g.prev.f + angleDiff(g.prev.f, g.curr.f) * alpha, speed: Math.hypot(e.vx, e.vz) });
           }
           continue;
         }
-        g.root.position.set(x, y - drop, z);
+        g.root.position.set(x, y - g.drop, z);
+        // 대장 돌진 예고: 겨누는 동안 띠가 차오르고, 방향이 고정되면 가장 진하다
+        if (g.strip) {
+          const on = e.ai === 'attack' && e.move === 'charge' && e.swingTick < CHARGE_WINDUP;
+          g.strip.visible = on;
+          if (on) {
+            g.strip.position.set(x, y - g.drop + 0.05, z);
+            g.strip.rotation.y = Math.atan2(-e.aimX, -e.aimZ);
+            (g.strip.material as MeshBasicMaterial).opacity = 0.25 + 0.5 * Math.min(1, (e.swingTick + alpha) / CHARGE_WINDUP);
+          }
+        }
         g.root.rotation.y = angleToRad(g.prev.f + angleDiff(g.prev.f, g.curr.f) * alpha) + MODEL_YAW_OFFSET;
 
         // 애니메이션 슬롯 선택
@@ -256,9 +306,21 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
           const s: Slot = e.staggerLen > 20 ? 'parried' : 'hit';
           target[s] = 1;
           g.acts[s].time = Math.min(e.aiTick / e.staggerLen, 1) * (clips[s].duration - 1e-3);
+        } else if (e.kind === 'archer' && e.ai === 'attack') {
+          // 활 당기기: 조준 자세
+          target.aim = 1;
+          g.acts.aim.time = Math.min(0.2, clips.aim.duration - 1e-3);
+        } else if (e.kind === 'captain' && e.ai === 'attack' && e.move === 'charge') {
+          // 돌진: 겨누는 동안 칼을 치켜든 자세 → 달리기 → 회복
+          if (e.swingTick < CHARGE_WINDUP) {
+            target.attack = 1;
+            g.acts.attack.time = impact * 0.45;
+          } else if (speed > 2) target.run = 1;
+          else target.idle = 1;
         } else if (e.ai === 'attack' && e.swingTick >= 0) {
           target.attack = 1;
-          g.acts.attack.time = warpAttack(e.swingTick + alpha, GOBLIN_ATTACK, { clip: clips.attack, impact });
+          const def = e.kind === 'captain' ? CAPTAIN_COMBO[e.step] ?? GOBLIN_ATTACK : GOBLIN_ATTACK;
+          g.acts.attack.time = Math.min(warpAttack(e.swingTick + alpha, def, { clip: clips.attack, impact }), clips.attack.duration - 1e-3);
         } else if (speed < 0.2) target.idle = 1;
         else if (speed < 2.2) {
           const k = Math.min(1, speed / 1.6);

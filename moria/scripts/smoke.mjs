@@ -86,7 +86,7 @@ for (const backend of ['webgpu', 'webgl']) {
   check(`[dev/${backend}] 화로까지 걷기`, await walkTo(p, -5, 33.2, 0.6));
   await sleep(500);
   await p.keyboard.press('KeyE');
-  const saved = await p.waitForFunction(() => JSON.parse(localStorage.getItem('moria.save') ?? 'null')?.progress?.checkpoint === 0, { timeout: 60_000 }).then(() => true, () => false);
+  const saved = await p.waitForFunction(() => JSON.parse(localStorage.getItem('moria.save') ?? 'null')?.progress?.zone1?.checkpoint === 0 /* 저장 v3: 구역별 진행 상태 */, { timeout: 60_000 }).then(() => true, () => false);
   check(`[dev/${backend}] 화로에서 저장`, saved);
   await p.goto(`http://127.0.0.1:5180/?${q}`);
   await devReady(p);

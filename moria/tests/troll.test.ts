@@ -137,7 +137,7 @@ describe('동굴 트롤', () => {
     disposeSim(sim);
   });
 
-  it('쓰러뜨린 보스는 저장되고, 복원하면 쓰러진 채로 시작한다 (저장 v1 → v2 이전 포함)', () => {
+  it('쓰러뜨린 보스는 저장되고, 복원하면 쓰러진 채로 시작한다 (저장 v1 → v3 이전 포함)', () => {
     const a = createSim(ARENA, 7);
     const e = troll(a);
     e.hp = 0;
@@ -146,10 +146,10 @@ describe('동굴 트롤', () => {
     const b = createSim(ARENA, 7);
     restoreProgress(b, progressOf(a));
     expect(troll(b).ai).toBe('dead');
-    expect(migrate({ v: 1, classId: 'dwarf', progress: { doorsOpen: [0], lit: [1], checkpoint: 1 } })).toEqual({
-      v: 2, classId: 'dwarf', progress: { doorsOpen: [0], lit: [1], checkpoint: 1, bossesDown: [] },
+    expect(migrate({ v: 1, classId: 'dwarf', progress: { doorsOpen: [0], lit: [1], checkpoint: 1 } })?.progress.zone1).toEqual({
+      doorsOpen: [0], lit: [1], checkpoint: 1, bossesDown: [], lampsLit: [],
     });
-    expect(migrate({ v: 3 })).toBeNull();
+    expect(migrate({ v: 4 })).toBeNull();
     expect(migrate({ v: 2, classId: 'orc', progress: {} })).toBeNull();
     [a, b].forEach(disposeSim);
   });

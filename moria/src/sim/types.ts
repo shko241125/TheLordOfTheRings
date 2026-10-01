@@ -15,6 +15,8 @@ export type InputFrame = {
   moveY: number;
   /** 카메라 요 (정수 각도, 1회전 = 4096) */
   yaw: number;
+  /** UI 명령 (0/없음 = 없음, 1..N = 스킬 배우기, 255 = 스킬 초기화) — 리플레이에 기록된다 */
+  cmd?: number;
 };
 
 // 유지형 버튼 (누르고 있는 동안 켜짐)
@@ -103,13 +105,29 @@ export type PlayerState = Mover & {
   senseReadyAt: number;
   /** 동료 호출 게이지 0..100 */
   companion: number;
+  // --- 성장 (sim/growth.ts) ---
+  level: number;
+  xp: number;
+  points: number;
+  /** 배운 스킬 (종족 트리의 노드 번호) */
+  skills: number[];
+  /** 레벨·스킬·장비에서 나온 전투 배율 (파생값 — 바뀔 때마다 다시 계산) */
+  mods: import('./growth').Mods;
+  // --- 장비 (sim/gear.ts) ---
+  inventory: import('./items').Item[];
+  /** 장착 6칸 (무기, 보조, 머리, 몸통, 장신구, 장신구) */
+  equipped: (import('./items').Item | null)[];
+  gold: number;
+  mithril: number;
+  /** 최근 어둠에 머문 비율 0..1 (지수 이동 평균) — 전리품 등급 */
+  darkness: number;
 };
 
 export type EnemyAI = 'patrol' | 'suspicious' | 'chase' | 'engage' | 'attack' | 'stagger' | 'dead';
 
-export type EnemyKind = 'goblin' | 'troll';
+export type EnemyKind = 'goblin' | 'troll' | 'archer' | 'captain';
 /** 트롤 기술 ('' = 없음) */
-export type TrollMove = '' | 'slam' | 'sweep';
+export type TrollMove = '' | 'slam' | 'sweep' | 'shoot' | 'combo' | 'charge';
 
 export type Enemy = Mover & {
   readonly id: number;
@@ -143,6 +161,10 @@ export type Enemy = Mover & {
   readonly home: V3;
   /** 무리(horde)에서 승격한 고블린 — 멀어지면 다시 무리로 강등될 수 있다 */
   fromHorde: boolean;
+  /** 기술 안의 단계 (대장 3연타의 몇 번째) */
+  step: number;
+  /** 한 번만 쓰는 기술 표시 비트 (대장 휘파람) */
+  used: number;
 };
 
 /** 부서지는 기둥 (트롤 내려찍기) */
@@ -205,11 +227,23 @@ export type SimEvent =
   | { type: 'slam'; tick: number; enemy: number; x: number; y: number; z: number }
   | { type: 'pillar'; tick: number; solid: number; x: number; z: number }
   | { type: 'crack'; tick: number; index: number; hp: number }
+  | { type: 'levelUp'; tick: number; level: number }
+  | { type: 'lamp'; tick: number; index: number; allLit: boolean }
+  | { type: 'shoot'; tick: number; enemy: number }
+  | { type: 'pickup'; tick: number; kind: 'item' | 'gold' | 'mithril' | 'full'; amount: number; name: string; grade: number }
+  | { type: 'gear'; tick: number; what: 'equip' | 'unequip' | 'drop' | 'upgrade'; name: string }
+  | { type: 'arrowStuck'; tick: number; x: number; y: number; z: number }
+  | { type: 'whistle'; tick: number; enemy: number }
+  | { type: 'exit'; tick: number; to: string; entry: string }
+  | { type: 'exitLocked'; tick: number; reason: string }
+  | { type: 'skill'; tick: number; index: number }
   | { type: 'collapse'; tick: number; index: number; stage: 'fall' | 'impact' | 'settled' }
   | { type: 'companion'; tick: number; who: string; line: string; x: number; y: number; z: number; facing: number; radius: number; halfArc: number; killed: number }
   | { type: 'rest'; tick: number; brazier: number; first: boolean };
 
 export type Sim = {
+  /** 이 시뮬레이션의 레벨 (바뀌지 않는 데이터 — 스냅샷에 담지 않는다) */
+  readonly level: import('./level').Level;
   tick: number;
   readonly world: RAPIER.World;
   readonly rng: Rng;
@@ -237,6 +271,19 @@ export type Sim = {
   readonly pillars: Pillar[];
   /** 보스 적 id (레벨의 bosses 순서) */
   readonly bosses: number[];
+  /** 바닥의 전리품 */
+  loot: import('./gear').LootDrop[];
+  nextLootId: number;
+  nextItemId: number;
+  /** 날아가는 화살 (고블린 궁수) */
+  arrows: import('./archer').Arrow[];
+  nextArrowId: number;
+  /** 퀘스트 등불 (구역 2 — 21번째 홀) */
+  readonly lamps: { readonly x: number; readonly y: number; readonly z: number; lit: boolean }[];
+  /** 구역 출구로 나갔다 (한 번만 사건을 낸다) */
+  exited: boolean;
+  /** 잠긴 출구 안에 있다 (들어설 때 한 번 알린다) */
+  exitLockedShown: boolean;
   /** 고블린 물결 (레벨에 horde 설정이 있을 때만) */
   readonly horde: import('./horde').Horde | null;
   /** 무너지는 기둥 (레벨 collapses 순서) */
