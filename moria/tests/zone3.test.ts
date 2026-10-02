@@ -207,7 +207,7 @@ describe('구역 3 — 마자르불의 방', () => {
 
     const t = createSim(ZONE3, 7);
     restorePages(t, [1, 7]);
-    expect(t.pages.map((x) => x.taken)).toEqual([false, true, false]);
+    expect(t.pages.map((x) => x.taken)).toEqual([false, true, false, false]);
     restoreProgress(t, { doorsOpen: [], lit: [], checkpoint: -1, bossesDown: [], lampsLit: [], defended: true }, 'south');
     expect(t.defense.state).toBe('done');
     expect(t.doors[0]!.open).toBe(true);

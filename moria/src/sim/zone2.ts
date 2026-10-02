@@ -76,6 +76,10 @@ export const ZONE2: Level = {
   horde: { size: 60 },
   // 고블린 대장: 북문 앞을 지킨다
   bosses: [{ kind: 'captain', pos: [0, 1.4, -55] }],
+  // 상인 노리: 동쪽 층계 화로 곁 (계획서 8장 — 등불마다 상인)
+  npcs: [{ kind: 'merchant', name: '상인 노리', pos: [-1.8, 0, 9], facing: 3072 }],
+  // 사이드: 책 조각 둘 (홀 북서 구석, 동문 가는 길)
+  pages: [{ id: 8, pos: [-22.5, 0, -58.5] }, { id: 9, pos: [2.5, 0, -72] }],
   entries: { south: { pos: [0, 1.2, 14], facing: 0 }, north: { pos: [0, 1.2, -70], facing: 2048 } },
   exits: [
     // 남쪽 끝 → 구역 1 트롤 굴 북쪽 통로

@@ -14,6 +14,7 @@ export type Interactable =
   | { kind: 'lamp'; index: number }
   | { kind: 'loot'; id: number; name: string; grade: number }
   | { kind: 'tomb' }
+  | { kind: 'npc'; index: number; name: string }
   | { kind: 'page'; index: number };
 
 /** 지금 플레이어가 상호작용할 수 있는 가장 가까운 대상 (렌더의 안내 문구와 시뮬레이션이 같은 판정을 쓴다) */
@@ -45,6 +46,13 @@ export function nearestInteractable(sim: Sim): Interactable | null {
     if (!l.lit && d <= INTERACT_RANGE + 0.6 && Math.abs(l.y + 1 - t.y) < 2 && d < bestD) {
       bestD = d;
       best = { kind: 'lamp', index: i };
+    }
+  }
+  for (const [i, n] of (sim.level.npcs ?? []).entries()) {
+    const d = dist(n.pos[0], n.pos[2]);
+    if (d <= INTERACT_RANGE + 0.3 && Math.abs(n.pos[1] + 1 - t.y) < 2 && d < bestD) {
+      bestD = d;
+      best = { kind: 'npc', index: i, name: n.name };
     }
   }
   const def = sim.level.defense;

@@ -46,7 +46,12 @@ export const LEGENDARIES: readonly { slot: SlotKind; name: string; desc: string;
   { slot: 'head', name: '두린의 투구', desc: '최대 체력 +25, 패링 창 +2틱', mods: { hp: 25, parry: 2 } },
   { slot: 'body', name: '미스릴 사슬갑옷', desc: '최대 체력 +60, 스태미나 비용 −15%', mods: { hp: 60, stamina: 0.85 } },
   { slot: 'trinket', name: '갈라드리엘의 별빛', desc: '돌의 감각 반경 +10m·재사용 −3초, 동료 게이지 +20%', mods: { sense: 10, senseCd: 180, ally: 1.2 } },
+  // 아래는 떨어지지 않는다 — 만들거나 받는 것 (rollItem은 슬롯마다 첫 전설만 쓴다)
+  { slot: 'weapon', name: '두린의 도끼', desc: '다시 타오른 모루에서 벼린 드워프 왕의 도끼 — 피해 +30%, 강공격 +25%', mods: { dmg: 1.3, heavy: 1.25 } },
+  { slot: 'trinket', name: '발린의 인장', desc: '마자르불의 책을 모두 모은 이에게 — 동료 게이지 +50%, 감각 반경 +5m', mods: { ally: 1.5, sense: 5 } },
 ];
+export const LEGEND_AXE = 5;
+export const LEGEND_SEAL = 6;
 
 /** 덧붙는 효과 후보 (굴림 범위는 등급으로 조금 커진다) */
 const AFFIXES: readonly ((g: number, r: Rng) => Partial<Mods>)[] = [

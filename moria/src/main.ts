@@ -38,6 +38,9 @@ import { clearSave, loadSave, writeSave } from './save';
 import { createSettingsPanel } from './render/settingsPanel';
 import { createSkillPanel } from './render/skillPanel';
 import { createGearPanel } from './render/gearPanel';
+import { createShopPanel } from './render/shopPanel';
+import { createNpcView } from './render/npcs';
+import { CMD_BOOK } from './sim/shop';
 import { createLootView } from './render/loot';
 import { GRADE_NAMES } from './sim/items';
 import { loadSettings, saveSettings, type Settings } from './settings';
@@ -153,6 +156,7 @@ async function boot() {
   const collapseView = createCollapseView(sim, gs.scene);
   const arrowView = createArrowView(sim, gs.scene);
   const balrogView = createBalrogView(sim, gs.scene, backend);
+  createNpcView(level, gs.scene, backend);
   const lootView = createLootView(sim, gs.scene);
   const trolls = await createTrolls(sim, gs.scene, rigId === 'ual' ? { slam: rig.actions.heavy, sweep: rig.actions.light3 } : null);
   const hud = createHud();
@@ -254,6 +258,11 @@ async function boot() {
       panel.toggle();
     }
     if (e.code === 'KeyB' && replayState === 'ready') gotoReplay();
+    if (e.code === settings.keys.interact && shopPanel.open) {
+      shopPanel.close();
+      return;
+    }
+    if (e.code === settings.keys.interact && talk()) return;
     if (e.code === settings.keys.interact && nearestInteractable(sim)?.kind === 'door') {
       e.preventDefault(); // 이 E가 방금 포커스를 받은 입력창에 'e'로 들어가지 않게
       durin.open();
@@ -289,13 +298,27 @@ async function boot() {
     () => sim.player,
     () => {
       const t = nearestInteractable(sim);
-      return t?.kind === 'brazier' && t.lit;
+      // 대장장이 곁(모루가 타오른 뒤)에서도 강화할 수 있다
+      return (t?.kind === 'brazier' && t.lit) || (t?.kind === 'npc' && sim.level.npcs![t.index]!.kind === 'smith' && sim.forge.lit);
     },
     (cmd) => input.command(cmd),
   );
+  const shopPanel = createShopPanel(start, sim, (cmd) => input.command(cmd));
+  /** NPC 곁에서 E: 상점 창 (일시정지 화면 안 — 마우스로 고른다) */
+  const talk = () => {
+    const t = nearestInteractable(sim);
+    if (t?.kind !== 'npc') return false;
+    const n = sim.level.npcs![t.index]!;
+    document.exitPointerLock?.();
+    skillPanel.close();
+    gearPanel.close();
+    start.style.display = 'grid';
+    shopPanel.show(n);
+    return true;
+  };
   // 터치 조작 (모바일 Low 단계): 터치 기기이거나 ?touch=1. 포인터 잠금이 없으므로 시작 화면은 탭으로 닫고 ❚❚로 다시 연다
   const touchMode = matchMedia('(pointer: coarse)').matches || qs.get('touch') === '1';
-  const touch = touchMode && !replay ? createTouch(input.view, () => { if (nearestInteractable(sim)?.kind === 'door') durin.open(); }) : null;
+  const touch = touchMode && !replay ? createTouch(input.view, () => { if (nearestInteractable(sim)?.kind === 'door') durin.open(); else talk(); }) : null;
   if (touch) {
     input.attachTouch(touch);
     touch.onPause = () => (start.style.display = 'grid');
@@ -455,13 +478,16 @@ async function boot() {
       } else if (ev.type === 'door') hud.toast(sim.level.lampDoors?.includes(ev.door) || sim.level.defense?.doors.includes(ev.door) || sim.level.forge?.doors.includes(ev.door) ? '쇠문이 열린다' : '두린의 문이 열린다', 1.8);
       else if (ev.type === 'lamp') hud.toast(ev.allLit ? '세 등불이 모두 타오른다' : `등불이 타오른다 (${sim.lamps.filter((l) => l.lit).length}/${sim.lamps.length})`, 1.8);
       if (ev.type === 'levelUp' || ev.type === 'skill') skillPanel.refresh();
-      if (ev.type === 'gear' || ev.type === 'pickup') gearPanel.refresh();
+      if (ev.type === 'gear' || ev.type === 'pickup') {
+        gearPanel.refresh();
+        shopPanel.refresh();
+      }
       if (ev.type === 'pickup') {
         if (ev.kind === 'item') hud.toast(`주웠다: ${GRADE_NAMES[ev.grade]} ${ev.name} (I)`, 1.8);
         else if (ev.kind === 'full') hud.toast('가방이 가득 찼다 (I에서 버리기)', 1.8);
         else hud.toast(ev.kind === 'gold' ? `금화 +${ev.amount}` : `미스릴 +${ev.amount}`, 1);
       } else if (ev.type === 'gear') {
-        hud.toast({ equip: '장착', unequip: '해제', drop: '버렸다', upgrade: '강화' }[ev.what] + `: ${ev.name}`, 1.4);
+        hud.toast({ equip: '장착', unequip: '해제', drop: '버렸다', upgrade: '강화', buy: '샀다' }[ev.what] + `: ${ev.name}`, 1.4);
       }
       if (ev.type === 'levelUp') hud.toast(`레벨 ${ev.level} — 스킬 포인트 +1 (Tab)`, 2.2);
       if (ev.type === 'skill') hud.toast(ev.index < 0 ? '스킬을 모두 되돌렸다' : `배웠다: ${TREES[classId].nodes[ev.index]!.name}`, 1.6);
@@ -486,6 +512,11 @@ async function boot() {
       else if (ev.type === 'pillar') gs.breakPillar(ev.solid);
       else if (ev.type === 'page') {
         pagesAll.add(ev.id);
+        // 열두 조각을 모두 모았다 → 발린의 인장 (명령으로 보내 리플레이에 남긴다)
+        if (pagesAll.size >= PAGE_COUNT) {
+          input.command(CMD_BOOK);
+          hud.toast('마자르불의 책이 다 모였다 — 발린의 인장을 얻었다', 3);
+        }
         const saved = saveNow();
         hud.page(`마자르불의 책 — 조각 ${pagesAll.size}/${PAGE_COUNT}${saved ? ' · 저장됨' : ''}`, PAGE_TEXTS[ev.id] ?? '…');
       } else if (ev.type === 'defense') {

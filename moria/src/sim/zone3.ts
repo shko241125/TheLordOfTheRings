@@ -87,6 +87,7 @@ export const ZONE3: Level = {
     { id: 0, pos: [-11, 0, -25] },
     { id: 1, pos: [11, 0, -3] },
     { id: 2, pos: [-1.6, 0, -34] },
+    { id: 10, pos: [12.5, 0, -26.5] },
   ],
   entries: { south: { pos: [0, 1.2, 13], facing: 0 }, north: { pos: [-0.8, 1.2, -40], facing: 2048 } },
   exits: [

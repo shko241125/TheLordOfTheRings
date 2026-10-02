@@ -234,7 +234,7 @@ export type SimEvent =
   | { type: 'lamp'; tick: number; index: number; allLit: boolean }
   | { type: 'shoot'; tick: number; enemy: number }
   | { type: 'pickup'; tick: number; kind: 'item' | 'gold' | 'mithril' | 'full'; amount: number; name: string; grade: number }
-  | { type: 'gear'; tick: number; what: 'equip' | 'unequip' | 'drop' | 'upgrade'; name: string }
+  | { type: 'gear'; tick: number; what: 'equip' | 'unequip' | 'drop' | 'upgrade' | 'buy'; name: string }
   | { type: 'arrowStuck'; tick: number; x: number; y: number; z: number }
   | { type: 'whistle'; tick: number; enemy: number }
   | { type: 'exit'; tick: number; to: string; entry: string }

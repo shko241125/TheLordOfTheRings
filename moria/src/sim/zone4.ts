@@ -79,6 +79,12 @@ export const ZONE4: Level = {
   pages: [
     { id: 3, pos: [-16, 0, -3] },
     { id: 4, pos: [16, 0, -37] },
+    { id: 11, pos: [16.5, 0, -12] },
+  ],
+  // 상인(남쪽 통로)과 대장장이 그로르(모루 곁 — 모루가 타오른 뒤 전설 무기를 벼린다)
+  npcs: [
+    { kind: 'merchant', name: '상인 노리', pos: [-1.8, 0, 7], facing: 3072 },
+    { kind: 'smith', name: '대장장이 그로르', pos: [3, 0, -27.5], facing: 1024 },
   ],
   entries: { south: { pos: [0, 1.2, 10], facing: 0 }, north: { pos: [-0.8, 1.2, -50], facing: 2048 } },
   exits: [

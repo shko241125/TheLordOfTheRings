@@ -1,3 +1,4 @@
+import { applyShopCommand, type NpcKind } from './shop';
 import type { ClassId } from './classes';
 import { applyGearCommand } from './gear';
 import { itemMods, type Item } from './items';
@@ -176,9 +177,11 @@ export function addXp(sim: Sim, amount: number) {
 
 /** 입력 명령: 1..N = N−1번 노드 배우기, 255 = 초기화(밝힌 화로 곁에서만 — 계획서: 등불에서 무료로) */
 export const CMD_RESET = 255;
-export function applyCommand(sim: Sim, cmd: number, nearLitBrazier: boolean) {
+export function applyCommand(sim: Sim, cmd: number, nearLitBrazier: boolean, npc: NpcKind | null = null) {
   const p = sim.player;
-  if (applyGearCommand(sim, cmd, nearLitBrazier)) return; // 100..205 장비 명령
+  // 대장장이 곁에서도 강화할 수 있다
+  if (applyGearCommand(sim, cmd, nearLitBrazier || (npc === 'smith' && sim.forge.lit))) return; // 100..205 장비 명령
+  if (applyShopCommand(sim, cmd, npc)) return; // 209..2xx 상점
   if (cmd === CMD_RESET) {
     if (!nearLitBrazier || p.skills.length === 0) return;
     p.points += p.skills.length;
