@@ -12,7 +12,7 @@ export type Solid =
 
 export type EnemySpawn = { pos: Vec3; patrol: readonly Vec3[]; /** 기본 고블린 */ kind?: 'goblin' | 'archer' | 'uruk' };
 
-export type ZoneId = 'zone1' | 'zone2' | 'zone3';
+export type ZoneId = 'zone1' | 'zone2' | 'zone3' | 'zone4';
 
 /** 방어전 한 물결의 구성 (sim/defense.ts) */
 export type DefenseWave = { goblins: number; archers: number; uruks: number; horde: number };
@@ -35,7 +35,7 @@ export type Level = {
   /** 화로 위치 (바닥 높이). 받침은 solids에 따로 있다 */
   braziers?: readonly Vec3[];
   /** 보스. 일반 적 다음 id를 받는다 */
-  bosses?: readonly { kind: 'troll' | 'captain'; pos: Vec3 }[];
+  bosses?: readonly { kind: 'troll' | 'captain'; pos: Vec3; /** 체력바 이름 (없으면 종류 이름) */ name?: string }[];
   /**
    * 무너지는 기둥: 밑동 중심·반지름·높이·넘어지는 방향(x, z)·체력.
    * seals = 굳은 뒤 봉쇄하는 영역 [minX, minY, minZ, maxX, maxY, maxZ] (굴 안쪽 — 주 동선에는 두지 않는다)
@@ -45,9 +45,9 @@ export type Level = {
   horde?: { size: number };
   /**
    * 구역 출구: 플레이어가 상자 안에 들어오면(조건을 채웠을 때) 다른 구역의 입구로 간다. to = 'end'면 지금 만들어진 끝.
-   * requires: 'bosses' = 이 구역 보스를 모두 쓰러뜨림, 'lamps' = 등불을 모두 밝힘, 'defense' = 방어전을 끝냄
+   * requires: 'bosses' = 이 구역 보스를 모두 쓰러뜨림, 'lamps' = 등불을 모두 밝힘, 'defense' = 방어전을 끝냄, 'forge' = 모루를 다시 지핌
    */
-  exits?: readonly { min: Vec3; max: Vec3; to: ZoneId | 'end'; entry: string; requires?: readonly ('bosses' | 'lamps' | 'defense')[]; locked?: string }[];
+  exits?: readonly { min: Vec3; max: Vec3; to: ZoneId | 'end'; entry: string; requires?: readonly ('bosses' | 'lamps' | 'defense' | 'forge')[]; locked?: string }[];
   /** 다른 구역에서 들어올 때 서는 자리와 바라보는 방향 (정수 각도) */
   entries?: Readonly<Record<string, { pos: Vec3; facing: number }>>;
   /** 퀘스트 등불 (바닥 높이). 모두 밝히면 lampDoors의 문이 열린다 */
@@ -58,6 +58,13 @@ export type Level = {
    * 모두 막으면 doors가 열린다. 막힌(붕괴로 봉쇄된) 스폰 자리는 건너뛴다
    */
   defense?: { at: Vec3; spawns: readonly Vec3[]; waves: readonly DefenseWave[]; doors: readonly number[] };
+  /** 용암 (구역 4): 이 상자 안에 들어간 것은 타 죽는다. 위쪽 면 근처가 빛난다 (렌더·감지 모두) */
+  lava?: readonly { min: Vec3; max: Vec3 }[];
+  /**
+   * 대장간 퍼즐 (구역 4 — 드워프 모루 재가동): 압력 발판 셋(바닥 높이)이 '한 순간에' 모두 눌리면 모루가 다시 타오르고 doors가 열린다.
+   * 발판을 누르는 것: 플레이어, 바닥에 놓인(던진 것 포함) 횃불. 횃불 둘을 내려놓고 마지막 발판에 서면 된다
+   */
+  forge?: { anvil: Vec3; plates: readonly Vec3[]; doors: readonly number[] };
   /** 마자르불의 책 조각 (바닥 높이). id는 게임 전체에서 고유 (0..11) */
   pages?: readonly { id: number; pos: Vec3 }[];
   /** 부서지는 원기둥 (solids 번호). 렌더는 이것들을 합치지 않고 따로 그린다 */

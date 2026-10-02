@@ -8,7 +8,7 @@ import type { Item } from './sim/items';
  * setItem은 값 하나를 통째로 바꾸므로 '반쯤 쓴 저장'이 생기지 않는다 → 계획서의 idb-keyval + 2단계 쓰기는 필요 없었다.
  * 읽을 때는 버전을 한 단계씩 올린 뒤(migrate) 모양을 검사하고, 틀리면 버린다 (새 게임). 저장소가 막힌 환경에서는 조용히 실패.
  *   v1: 진행 상태 하나 / v2: + 보스 처치 / v3: 구역별 진행 상태 + 현재 구역·입구 + 성장(레벨·XP·스킬) / v4: + 장비(인벤토리·장착·금화·미스릴)
- *   / v5: + 마자르불의 책 조각(게임 전체 id), 구역 진행에 방어전 완료
+ *   / v5: + 마자르불의 책 조각(게임 전체 id), 구역 진행에 방어전 완료 (모루 재가동 forged도 같은 v5 — 선택 필드)
  */
 const KEY = 'moria.save';
 export const SAVE_VERSION = 5;
@@ -53,15 +53,15 @@ function validGear(x: unknown): Gear | null {
 }
 
 const ints = (x: unknown): x is number[] => Array.isArray(x) && x.every((n) => Number.isInteger(n));
-const ZONES: readonly ZoneId[] = ['zone1', 'zone2', 'zone3'];
+const ZONES: readonly ZoneId[] = ['zone1', 'zone2', 'zone3', 'zone4'];
 
 function validProgress(p: unknown): Progress | null {
   if (typeof p !== 'object' || p === null) return null;
   const r = p as Record<string, unknown>;
   const lampsLit = r.lampsLit ?? [];
   if (!ints(r.doorsOpen) || !ints(r.lit) || !Number.isInteger(r.checkpoint) || !ints(r.bossesDown) || !ints(lampsLit)) return null;
-  if (r.defended !== undefined && typeof r.defended !== 'boolean') return null;
-  return { doorsOpen: r.doorsOpen, lit: r.lit, checkpoint: r.checkpoint as number, bossesDown: r.bossesDown, lampsLit, ...(r.defended ? { defended: true } : {}) };
+  if ((r.defended !== undefined && typeof r.defended !== 'boolean') || (r.forged !== undefined && typeof r.forged !== 'boolean')) return null;
+  return { doorsOpen: r.doorsOpen, lit: r.lit, checkpoint: r.checkpoint as number, bossesDown: r.bossesDown, lampsLit, ...(r.defended ? { defended: true } : {}), ...(r.forged ? { forged: true } : {}) };
 }
 
 /** 옛 버전 → 현재 버전. 한 단계씩 올린다 */

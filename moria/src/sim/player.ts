@@ -50,7 +50,7 @@ function spend(p: PlayerState, sim: Sim, cost: number) {
   if (p.stamina === 0) p.exhausted = true;
 }
 
-function startAction(p: PlayerState, kind: PlayerState['action']) {
+export function startAction(p: PlayerState, kind: PlayerState['action']) {
   p.action = kind;
   p.actionTick = 0;
   p.hitSet.clear();

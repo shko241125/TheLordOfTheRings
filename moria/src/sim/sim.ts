@@ -20,6 +20,7 @@ import { createCollapses, createNavBlock, damageCollapse, stepCollapses } from '
 import { callCompanion } from './companion';
 import { urukGuard } from './uruk';
 import { createDefense, defenseActive, stepDefense } from './defense';
+import { lavaLights, stepForge } from './forge';
 import { giveStartingTorch, updateTorches } from './torch';
 import { BTN_CALL, BTN_DODGE, BTN_LIGHT, G_CHAR, G_LEVEL, groups, type InputFrame, type Sim, type SimLight, type V3 } from './types';
 
@@ -91,7 +92,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
     enemies: [],
     enemyController: makeController(world),
     nav,
-    staticLights: level.torches.map(([x, y, z]) => ({ x, y, z, intensity: 0.9, range: 7 })),
+    staticLights: [...level.torches.map(([x, y, z]) => ({ x, y, z, intensity: 0.9, range: 7 })), ...lavaLights(level)],
     torches: [],
     nextTorchId: 0,
     noise: [],
@@ -119,6 +120,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
     navBlock: createNavBlock(),
     classId,
     defense: createDefense(),
+    forge: { lit: false, plates: (level.forge?.plates ?? []).map(() => false) },
     pages: (level.pages ?? []).map((p) => ({ id: p.id, x: p.pos[0], y: p.pos[1], z: p.pos[2], taken: false })),
   };
   // 붕괴 기둥: 레벨·문 바디 다음, 플레이어보다 뒤 — 생성 순서 고정 (결정성 규칙 4)
@@ -228,6 +230,7 @@ export function stepSim(sim: Sim, input: InputFrame): void {
   stepLoot(sim);
   stepCollapses(sim);
   stepDefense(sim);
+  stepForge(sim);
   // 문이 닫힌 동안(서문 밖)은 디렉터가 쉰다 — 내비메시는 문을 열린 상태로 보므로 물결이 문에 막혀 버린다
   // 보스전 중에도 쉰다 (L4D의 보스 이벤트처럼 물결과 겹치지 않게)
   if (sim.doors.every((d) => d.open) && !bossAwake(sim) && !defenseActive(sim)) stepDirector(sim, lights);
@@ -282,6 +285,7 @@ export function hashSim(sim: Sim): number {
     for (const a of sim.arrows) h = mix(h, a.id, a.x, a.y, a.z, a.ttl);
   }
   if (sim.defense.state !== 'idle') h = mix(h, ['idle', 'warn', 'wave', 'rest', 'done'].indexOf(sim.defense.state), sim.defense.wave, sim.defense.tick);
+  if (sim.level.forge) h = mix(h, sim.forge.lit ? 1 : 0, ...sim.forge.plates.map((x) => (x ? 1 : 0)));
   if (sim.pages.some((x) => x.taken)) h = mix(h, ...sim.pages.map((x) => (x.taken ? 1 : 0)));
   if (sim.lamps.length) h = mix(h, ...sim.lamps.map((l) => (l.lit ? 1 : 0)), sim.exited ? 1 : 0);
   for (const c of sim.collapses) {

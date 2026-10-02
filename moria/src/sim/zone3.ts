@@ -3,7 +3,7 @@ import type { EnemySpawn, Level, Portal, Room, Solid, Vec3 } from './level';
 
 /**
  * 구역 3 — 마자르불의 방 (계획서 7장 구역 표 3번: 발린의 무덤, 방어전 웨이브, 우루크, 마자르불의 책 조각).
- * 동선: 남쪽 통로(21번째 홀 북문에서 이어짐, 화로) → 마자르불의 방(가운데 발린의 무덤, 양옆에 고블린 굴) → 북쪽 쇠문(방어전을 끝내면 열린다).
+ * 동선: 남쪽 통로(21번째 홀 북문에서 이어짐, 화로) → 마자르불의 방(가운데 발린의 무덤, 양옆에 고블린 굴) → 북쪽 쇠문(방어전을 끝내면 열린다) → 구역 4 대장간.
  * 무덤에서 E → 방어전 3물결이 양옆 굴에서 쏟아진다. 굴 입구마다 금 간 기둥 — 무너뜨리면 그쪽 굴이 막혀 한쪽만 지키면 된다.
  */
 const SOUTH: Room = { name: '남쪽 통로', min: [-3, 0, 0], max: [3, 8, 16] };
@@ -88,9 +88,9 @@ export const ZONE3: Level = {
     { id: 1, pos: [11, 0, -3] },
     { id: 2, pos: [-1.6, 0, -34] },
   ],
-  entries: { south: { pos: [0, 1.2, 13], facing: 0 } },
+  entries: { south: { pos: [0, 1.2, 13], facing: 0 }, north: { pos: [-0.8, 1.2, -40], facing: 2048 } },
   exits: [
     { min: [-3, -1, 14.5], max: [3, 6, 16], to: 'zone2', entry: 'north' },
-    { min: [-3, -1, -46], max: [3, 6, -43], to: 'end', entry: 'end', requires: ['defense'], locked: '아직 갈 수 없다 — 마자르불의 방을 지켜 내라' },
+    { min: [-3, -1, -46], max: [3, 6, -43], to: 'zone4', entry: 'south', requires: ['defense'], locked: '아직 갈 수 없다 — 마자르불의 방을 지켜 내라' },
   ],
 };

@@ -120,7 +120,10 @@ describe('구역 3 — 마자르불의 방', () => {
   it('무덤에서 E → 3물결을 막으면 쇠문이 열리고 북쪽 출구가 열린다 (디렉터는 쉰다)', () => {
     const s = createSim(ZONE3, 2);
     // 방어전 전에는 북쪽 출구가 잠겨 있다
-    expect(nearestInteractable(s)?.kind).not.toBe('door'); // 쇠문은 비문이 아니다
+    // 쇠문은 비문이 아니다 (문 바로 앞에서도 수수께끼가 뜨지 않는다)
+    put(s, 0, 1.2, -26);
+    run(s, idle(), 2);
+    expect(nearestInteractable(s)?.kind).not.toBe('door');
     startAtTomb(s);
     expect(s.defense.state).toBe('warn');
     const counts: number[] = [];
@@ -145,7 +148,7 @@ describe('구역 3 — 마자르불의 방', () => {
     expect(s.events.some((e) => e.type === 'wave')).toBe(false);
     put(s, 0, 1.2, -44.5);
     run(s, idle(), 3);
-    expect(s.events.find((e) => e.type === 'exit')).toMatchObject({ to: 'end' });
+    expect(s.events.find((e) => e.type === 'exit')).toMatchObject({ to: 'zone4', entry: 'south' });
     disposeSim(s);
   });
 

@@ -304,12 +304,18 @@ async function boot() {
   /** 보스 체력바: 깨어 있는 보스 하나 (트롤·대장) */
   const BOSS_NAME: Record<string, string> = { troll: '동굴 트롤', captain: '고블린 대장' };
   const BOSS_MAX: Record<string, number> = { troll: TROLL_HP, captain: CAPTAIN_HP };
+  /** 보스 이름: 레벨이 정한 이름(우루크 대장) 또는 종류 이름 */
+  const bossName = (id: number) => {
+    const i = sim.bosses.indexOf(id);
+    const kind = sim.enemies.find((x) => x.id === id)?.kind ?? '';
+    return level.bosses?.[i]?.name ?? BOSS_NAME[kind] ?? '';
+  };
   const bossBar = () => {
     for (const id of sim.bosses) {
       const e = sim.enemies.find((x) => x.id === id);
       if (!e) continue;
       const awake = e.ai !== 'patrol' && e.ai !== 'dead' && e.ai !== 'suspicious';
-      if (awake) return { name: BOSS_NAME[e.kind] ?? '', hp: e.hp, max: BOSS_MAX[e.kind] ?? e.hp, awake };
+      if (awake) return { name: bossName(id), hp: e.hp, max: BOSS_MAX[e.kind] ?? e.hp, awake };
     }
     // 방어전: 남은 물결을 막대로
     const d = sim.defense;
@@ -442,7 +448,7 @@ async function boot() {
       if (ev.type === 'rest') {
         const saved = saveNow();
         hud.toast(`${ev.first ? '화로가 타오른다' : '불 곁에서 쉬었다'}${saved ? ' · 저장됨' : ''}`, 1.6);
-      } else if (ev.type === 'door') hud.toast(sim.level.lampDoors?.includes(ev.door) || sim.level.defense?.doors.includes(ev.door) ? '쇠문이 열린다' : '두린의 문이 열린다', 1.8);
+      } else if (ev.type === 'door') hud.toast(sim.level.lampDoors?.includes(ev.door) || sim.level.defense?.doors.includes(ev.door) || sim.level.forge?.doors.includes(ev.door) ? '쇠문이 열린다' : '두린의 문이 열린다', 1.8);
       else if (ev.type === 'lamp') hud.toast(ev.allLit ? '세 등불이 모두 타오른다' : `등불이 타오른다 (${sim.lamps.filter((l) => l.lit).length}/${sim.lamps.length})`, 1.8);
       if (ev.type === 'levelUp' || ev.type === 'skill') skillPanel.refresh();
       if (ev.type === 'gear' || ev.type === 'pickup') gearPanel.refresh();
@@ -459,7 +465,7 @@ async function boot() {
       else if (ev.type === 'exit') {
         if (ev.to === 'end') {
           saveNow();
-          start.innerHTML = `여기까지가 지금의 모리아다<small>마자르불의 방 너머 — 대장간과 깊은 탄갱은 아직 어둠 속에 있다.<br>레벨 ${sim.player.level} · 책 조각 ${pagesAll.size}/${PAGE_COUNT} · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>`;
+          start.innerHTML = `여기까지가 지금의 모리아다<small>대장간 너머 — 크하잣둠의 다리는 아직 어둠 속에 있다.<br>레벨 ${sim.player.level} · 책 조각 ${pagesAll.size}/${PAGE_COUNT} · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>`;
           start.style.display = 'grid';
           document.exitPointerLock?.();
         } else {
@@ -481,6 +487,8 @@ async function boot() {
         else if (ev.stage === 'clear') hud.toast(`물결을 막았다 (${ev.wave}/${ev.of}) — 숨을 고른다`, 2.4);
         else hud.toast(`마자르불의 방을 지켜 냈다${saveNow() ? ' · 저장됨' : ''}`, 3);
       } else if (ev.type === 'guardBreak') hud.toast('방패를 깼다!', 0.8);
+      else if (ev.type === 'plate' && ev.down) hud.toast(`발판이 내려앉는다 (${sim.forge.plates.filter(Boolean).length}/${sim.forge.plates.length})`, 1.2);
+      else if (ev.type === 'forge') hud.toast(`모루가 다시 타오른다 — 쇠문이 열린다${saveNow() ? ' · 저장됨' : ''}`, 3);
       else if (ev.type === 'companion') {
         hud.toast(`${ev.who}: ${ev.line}`, 1.6);
         shake = Math.max(shake, 0.25);
@@ -492,8 +500,7 @@ async function boot() {
       }
       else if (ev.type === 'death' && sim.bosses.includes(ev.enemy)) {
         const saved = saveNow(); // 보스 처치는 바로 저장
-        const kind = sim.enemies.find((e) => e.id === ev.enemy)?.kind;
-        hud.toast(`${kind === 'captain' ? '고블린 대장' : '동굴 트롤'}을 쓰러뜨렸다${saved ? ' · 저장됨' : ''}`, 3);
+        hud.toast(`${bossName(ev.enemy)}을 쓰러뜨렸다${saved ? ' · 저장됨' : ''}`, 3);
       } else if (ev.type === 'whistle') hud.toast('대장이 휘파람을 분다 — 무리가 몰려온다!', 2.2);
       if (ev.type === 'slam') {
         const t = sim.player.body.translation();
@@ -590,7 +597,7 @@ async function boot() {
       looseList.push(q ? { x: t.x, y: t.y, z: t.z, qx: q.x, qy: q.y, qz: q.z, qw: q.w } : { x: t.x, y: t.y - 0.1, z: t.z, ...LYING });
     }
     gs.update(view, looseList, holding);
-    gs.props(dt, sim.doors.map((d) => d.open), sim.braziers.map((b) => b.lit), view, sim.lamps.map((l) => l.lit));
+    gs.props(dt, sim.doors.map((d) => d.open), sim.braziers.map((b) => b.lit), view, sim.lamps.map((l) => l.lit), sim.forge);
 
     // --- 돌의 감각 (후처리 음파 + 움직이는 고블린 드러내기) ---
     const st = sense.start < 0 ? -1 : (now - sense.start) / 1000;

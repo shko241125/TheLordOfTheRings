@@ -1,4 +1,5 @@
 import { finishDefense, startDefense } from './defense';
+import { lightForge } from './forge';
 import { LOOT_PICK_R, pickupItem } from './gear';
 import { BTN_INTERACT, BTN_WORD, type Sim } from './types';
 
@@ -65,7 +66,7 @@ export function nearestInteractable(sim: Sim): Interactable | null {
   for (let i = 0; i < sim.doors.length; i++) {
     const door = sim.doors[i]!;
     // 등불로 여는 문은 비문 수수께끼가 아니다
-    if (sim.level.lampDoors?.includes(i)) continue;
+    if (sim.level.lampDoors?.includes(i) || sim.level.defense?.doors.includes(i) || sim.level.forge?.doors.includes(i)) continue;
     const d = dist(door.pos[0], door.pos[2]);
     if (!door.open && d <= DOOR_RANGE && d < bestD) {
       bestD = d;
@@ -142,7 +143,8 @@ export function stepExits(sim: Sim) {
     const ok = (x.requires ?? []).every((r) =>
       r === 'bosses' ? sim.bosses.every((id) => sim.enemies.find((e) => e.id === id)?.ai === 'dead')
         : r === 'lamps' ? sim.lamps.every((l) => l.lit)
-          : sim.defense.state === 'done',
+          : r === 'forge' ? sim.forge.lit
+            : sim.defense.state === 'done',
     );
     if (ok) {
       sim.exited = true;
@@ -168,6 +170,8 @@ export type Progress = {
   lampsLit: number[];
   /** 방어전을 끝냈다 (구역 3) */
   defended?: boolean;
+  /** 모루를 다시 지폈다 (구역 4) */
+  forged?: boolean;
 };
 
 export function progressOf(sim: Sim): Progress {
@@ -178,6 +182,7 @@ export function progressOf(sim: Sim): Progress {
     bossesDown: sim.bosses.flatMap((id, i) => (sim.enemies.find((e) => e.id === id)?.ai === 'dead' ? [i] : [])),
     lampsLit: sim.lamps.flatMap((l, i) => (l.lit ? [i] : [])),
     ...(sim.defense.state === 'done' ? { defended: true } : {}),
+    ...(sim.forge.lit ? { forged: true } : {}),
   };
 }
 
@@ -187,6 +192,7 @@ export function restoreProgress(sim: Sim, pr: Progress, entry: string | null = n
   for (const i of pr.lampsLit ?? []) lightLamp(sim, i, true);
   for (const i of pr.lit) if (sim.braziers[i]) sim.braziers[i]!.lit = true;
   if (pr.defended) finishDefense(sim, true);
+  if (pr.forged) lightForge(sim, true);
   for (const i of pr.bossesDown) {
     const e = sim.enemies.find((x) => x.id === sim.bosses[i]);
     if (!e) continue;

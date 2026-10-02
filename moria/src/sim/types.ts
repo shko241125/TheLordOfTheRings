@@ -215,7 +215,7 @@ export type DirectorState = {
 /** 렌더가 소비하는 일회성 사건 (시뮬레이션은 읽지 않는다 → 결정성과 무관) */
 export type SimEvent =
   | { type: 'hit'; tick: number; target: number; x: number; y: number; z: number; heavy: boolean; dark: number }
-  | { type: 'playerHit'; tick: number; damage: number; source: 'goblin' | 'troll' | 'collapse' }
+  | { type: 'playerHit'; tick: number; damage: number; source: 'goblin' | 'troll' | 'collapse' | 'lava' }
   | { type: 'parry'; tick: number; enemy: number }
   | { type: 'death'; tick: number; enemy: number }
   | { type: 'swing'; tick: number; actor: number; attack: string }
@@ -243,6 +243,8 @@ export type SimEvent =
   | { type: 'guardBreak'; tick: number; enemy: number }
   | { type: 'defense'; tick: number; stage: 'start' | 'wave' | 'clear' | 'done'; wave: number; of: number }
   | { type: 'page'; tick: number; id: number }
+  | { type: 'plate'; tick: number; index: number; down: boolean }
+  | { type: 'forge'; tick: number }
   | { type: 'rest'; tick: number; brazier: number; first: boolean };
 
 export type Sim = {
@@ -297,6 +299,8 @@ export type Sim = {
   readonly classId: import('./classes').ClassId;
   /** 방어전 (구역 3) */
   defense: import('./defense').DefenseState;
+  /** 대장간 (구역 4): 모루가 타오른다, 발판마다 눌림 */
+  forge: { lit: boolean; plates: boolean[] };
   /** 마자르불의 책 조각 (이 구역에 놓인 것) */
   readonly pages: { readonly id: number; readonly x: number; readonly y: number; readonly z: number; taken: boolean }[];
 };

@@ -29,6 +29,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createRng } from '../core/rng';
 import type { Level, SurfaceKind, Vec3 } from '../sim/level';
 import { MAX_THROWN } from '../sim/torch';
+import { lavaLights } from '../sim/forge';
 import type { Backend } from './renderer';
 
 const TORCH_COLOR = 0xff8a3d;
@@ -61,7 +62,7 @@ export type GameScene = {
   /** 매 렌더 프레임: 횃불 깜빡임, 떨어진 횃불 배치, WebGL2에서는 가까운 횃불로 광원 재배치 */
   update(focus: Vector3, loose: readonly LooseTorch[], holdingTorch: boolean): void;
   /** 문 여닫이·이실딘 빛·화로 불 (시뮬레이션 상태를 그대로 받는다) */
-  props(dt: number, doorsOpen: readonly boolean[], braziersLit: readonly boolean[], player: Vector3, lampsLit?: readonly boolean[]): void;
+  props(dt: number, doorsOpen: readonly boolean[], braziersLit: readonly boolean[], player: Vector3, lampsLit?: readonly boolean[], forge?: { lit: boolean; plates: readonly boolean[] }): void;
   /** 트롤이 기둥을 부쉈다: 기둥을 숨기고 돌조각을 흩뿌린다 (렌더 전용 — 조각은 물리와 무관) */
   breakPillar(solid: number): void;
   /** 포털 컬링: 카메라가 있는 방에서 보이는 통로를 따라 닿는 방만 그린다. 보이는 방 번호 목록을 돌려준다 */
@@ -284,6 +285,54 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
     return { fire, light, pos: new Vector3(x, y + 2.4, z), room: roomOf(x, y + 0.5, z), lit: false };
   });
 
+  // --- 용암 (구역 4): 스스로 빛나는 판 + 시뮬레이션과 같은 자리의 주황 광원 (WebGL은 광원 풀이 작아 판만) ---
+  const lavaMat = track(new MeshBasicMaterial({ color: new Color(1.0, 0.32, 0.05) }));
+  for (const l of level.lava ?? []) {
+    const [x0, , z0] = l.min;
+    const [x1, y1, z1] = l.max;
+    const slab = new Mesh(track(new BoxGeometry(x1 - x0, 0.2, z1 - z0)), lavaMat);
+    slab.position.set((x0 + x1) / 2, y1 - 0.1, (z0 + z1) / 2);
+    scene.add(slab);
+  }
+  if (backend === 'webgpu') {
+    for (const p of lavaLights(level)) {
+      const l = new PointLight(0xff5a18, 45, 10, 2);
+      l.position.set(p.x, p.y, p.z);
+      scene.add(l);
+    }
+  }
+
+  // --- 대장간 (구역 4): 압력 발판(눌리면 룬 고리가 달아오른다) + 모루 위 불 ---
+  const plateGeo = track(new CylinderGeometry(1, 1, 0.08, 24));
+  const plateRingGeo = track(new TorusGeometry(0.75, 0.04, 6, 32));
+  const plateMat = track(new MeshStandardMaterial({ color: 0x4a4440, roughness: 0.8 }));
+  const plates = (level.forge?.plates ?? []).map(([x, y, z]) => {
+    const disc = new Mesh(plateGeo, plateMat);
+    disc.position.set(x, y + 0.04, z);
+    const ringMat = track(new MeshBasicMaterial({ color: 0x3a2614 }));
+    const ring = new Mesh(plateRingGeo, ringMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(x, y + 0.09, z);
+    scene.add(disc, ring);
+    return { disc, ringMat, y };
+  });
+  const forgeFire = new Group();
+  const forgeLight = new PointLight(0xff7a30, 0, 18, 2);
+  if (level.forge) {
+    const [ax, ay, az] = level.forge.anvil;
+    for (const [ox, oz, h] of [[-0.4, 0, 1.6], [0.4, 0.1, 1.4], [0, -0.2, 2]] as const) {
+      const f = new Mesh(lampFlameGeo, coalMat);
+      f.position.set(ox, 0, oz);
+      f.scale.set(1, h, 1);
+      forgeFire.add(f);
+    }
+    forgeFire.position.set(ax, ay + 1.3, az);
+    forgeFire.visible = false;
+    forgeLight.position.set(ax, ay + 2.2, az);
+    scene.add(forgeFire);
+    if (backend === 'webgpu') scene.add(forgeLight);
+  }
+
   // 플레이어가 든 횃불 광원. 그림자를 드리우는 유일한 광원이며 위치는 매 프레임 손의 불꽃에 맞춘다.
   // 26cd였을 때 0.6m 거리의 캐릭터 몸이 하얗게 날아갔다 (스크린샷 확인) → 14cd
   const playerTorch = new PointLight(0xffa050, PLAYER_TORCH_INTENSITY, 14, 2);
@@ -381,7 +430,17 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
       stump.castShadow = stump.receiveShadow = true;
       m.parent!.add(stump);
     },
-    props(dt, doorsOpen, braziersLit, player, lampsLit = []) {
+    props(dt, doorsOpen, braziersLit, player, lampsLit = [], forge) {
+      lavaMat.color.setRGB(1.0, 0.3 + 0.05 * Math.sin(performance.now() / 600), 0.05);
+      if (forge) {
+        plates.forEach((p, i) => {
+          p.ringMat.color.set(forge.lit || forge.plates[i] ? 0xffa040 : 0x3a2614);
+          p.disc.position.y = p.y + (forge.plates[i] ? 0.0 : 0.04);
+        });
+        forgeFire.visible = forge.lit;
+        forgeLight.intensity = forge.lit ? 160 * (0.85 + fx.next() * 0.15) : 0;
+        if (forge.lit) forgeFire.scale.y = 0.9 + fx.next() * 0.3;
+      }
       for (let i = 0; i < lamps.length; i++) {
         const l = lamps[i]!;
         l.lit = !!lampsLit[i];
