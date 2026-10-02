@@ -13,6 +13,8 @@ import { createCollapseView } from './render/collapse';
 import { createArrowView } from './render/arrows';
 import { TROLL_HP } from './sim/troll';
 import { CAPTAIN_HP } from './sim/captain';
+import { BALROG_HP } from './sim/balrog';
+import { createBalrogView } from './render/balrog';
 import { createHordeView } from './render/horde';
 import { createHud, createMinimap } from './render/hud';
 import { createTrolls } from './render/troll';
@@ -150,6 +152,7 @@ async function boot() {
   const hordeView = await createHordeView(sim, gs.scene);
   const collapseView = createCollapseView(sim, gs.scene);
   const arrowView = createArrowView(sim, gs.scene);
+  const balrogView = createBalrogView(sim, gs.scene, backend);
   const lootView = createLootView(sim, gs.scene);
   const trolls = await createTrolls(sim, gs.scene, rigId === 'ual' ? { slam: rig.actions.heavy, sweep: rig.actions.light3 } : null);
   const hud = createHud();
@@ -303,7 +306,7 @@ async function boot() {
   let autoLockAt = 0;
   /** 보스 체력바: 깨어 있는 보스 하나 (트롤·대장) */
   const BOSS_NAME: Record<string, string> = { troll: '동굴 트롤', captain: '고블린 대장' };
-  const BOSS_MAX: Record<string, number> = { troll: TROLL_HP, captain: CAPTAIN_HP };
+  const BOSS_MAX: Record<string, number> = { troll: TROLL_HP, captain: CAPTAIN_HP, balrog: BALROG_HP };
   /** 보스 이름: 레벨이 정한 이름(우루크 대장) 또는 종류 이름 */
   const bossName = (id: number) => {
     const i = sim.bosses.indexOf(id);
@@ -444,6 +447,7 @@ async function boot() {
       goblins.onEvent(ev);
       trolls.onEvent(ev);
       collapseView.onEvent(ev);
+      balrogView.onEvent(ev);
       audio.event(ev);
       if (ev.type === 'rest') {
         const saved = saveNow();
@@ -465,7 +469,10 @@ async function boot() {
       else if (ev.type === 'exit') {
         if (ev.to === 'end') {
           saveNow();
-          start.innerHTML = `여기까지가 지금의 모리아다<small>대장간 너머 — 크하잣둠의 다리는 아직 어둠 속에 있다.<br>레벨 ${sim.player.level} · 책 조각 ${pagesAll.size}/${PAGE_COUNT} · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>`;
+          // 엔딩 (계획서 7장: 원정대의 후퇴를 엄호하고 동문으로 빠져나간다)
+          start.innerHTML = `동문 너머로<small>다리는 무너졌고, 불은 심연으로 떨어졌다. 원정대는 어둠 밖으로 빠져나갔다.<br>
+            발린 원정대의 마지막 기록은 그대의 손에 남았다 — 마자르불의 책 조각 ${pagesAll.size}/${PAGE_COUNT}.<br>
+            레벨 ${sim.player.level} · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>`;
           start.style.display = 'grid';
           document.exitPointerLock?.();
         } else {
@@ -487,6 +494,12 @@ async function boot() {
         else if (ev.stage === 'clear') hud.toast(`물결을 막았다 (${ev.wave}/${ev.of}) — 숨을 고른다`, 2.4);
         else hud.toast(`마자르불의 방을 지켜 냈다${saveNow() ? ' · 저장됨' : ''}`, 3);
       } else if (ev.type === 'guardBreak') hud.toast('방패를 깼다!', 0.8);
+      else if (ev.type === 'chase') hud.toast(ev.stage === 'start' ? '뒤에서 불길이 몰려온다 — 다리까지 달려라!' : '다리다!', ev.stage === 'start' ? 2.6 : 1.2);
+      else if (ev.type === 'balrog') {
+        const line = { wake: '불길 속에서 두린의 재앙이 걸어 나온다', phase3: '발로그가 불의 채찍을 꺼낸다', exposed: '칼이 다리에 박혔다 — 가슴을 쳐라!', break: '간달프가 지팡이로 다리를 내리친다 — 다리가 갈라진다!', fall: '발로그가 불의 심연으로 떨어진다' }[ev.stage];
+        hud.toast(line, ev.stage === 'exposed' ? 1.2 : 3);
+        if (ev.stage === 'break' || ev.stage === 'fall') shake = Math.max(shake, 0.7);
+      } else if (ev.type === 'swing' && (ev.attack === 'windL' || ev.attack === 'windR')) hud.toast('날개가 들린다 — 웅크려(C) 버텨라!', 1.2);
       else if (ev.type === 'plate' && ev.down) hud.toast(`발판이 내려앉는다 (${sim.forge.plates.filter(Boolean).length}/${sim.forge.plates.length})`, 1.2);
       else if (ev.type === 'forge') hud.toast(`모루가 다시 타오른다 — 쇠문이 열린다${saveNow() ? ' · 저장됨' : ''}`, 3);
       else if (ev.type === 'companion') {
@@ -616,6 +629,7 @@ async function boot() {
     hordeView?.update(animDt, sim.hitstop > 0 ? 1 : alpha, gs.seen, impostors);
     collapseView.update(animDt);
     arrowView.update();
+    balrogView.update(animDt);
     lootView.update(animDt);
     hud.boss(bossBar()); // 방 가시성은 지난 프레임 cull 결과 (1프레임 지연)
 

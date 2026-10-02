@@ -24,7 +24,10 @@ const FAR = 14;
 const SPEED = 3.2;
 const TURN = 90;
 
-export type Arrow = { readonly id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; ttl: number };
+/** fire = 발로그의 불덩이 (느리고 세다) */
+export type Arrow = { readonly id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; ttl: number; fire?: boolean };
+export const ORB_SPEED = 12;
+export const ORB_DAMAGE = 20;
 
 export function stepArcher(sim: Sim, e: Enemy, lights: readonly SimLight[]) {
   const p = sim.player;
@@ -110,13 +113,15 @@ export function stepArrows(sim: Sim) {
   const r = p.stats.capsuleRadius + 0.12;
   const half = p.stats.capsuleHalf + p.stats.capsuleRadius;
   sim.arrows = sim.arrows.filter((a) => {
-    const step = ARROW_SPEED * DT;
-    const hit = sim.world.castRay(new RAPIER.Ray({ x: a.x, y: a.y, z: a.z }, { x: a.vx / ARROW_SPEED, y: a.vy / ARROW_SPEED, z: a.vz / ARROW_SPEED }), step, true, undefined, groups(0xffff, G_LEVEL));
+    const sp = a.fire ? ORB_SPEED : ARROW_SPEED;
+    const step = sp * DT;
+    const hit = sim.world.castRay(new RAPIER.Ray({ x: a.x, y: a.y, z: a.z }, { x: a.vx / sp, y: a.vy / sp, z: a.vz / sp }), step, true, undefined, groups(0xffff, G_LEVEL));
     const t = hit ? hit.timeOfImpact / step : 1;
     const nx = a.x + a.vx * DT * t, ny = a.y + a.vy * DT * t, nz = a.z + a.vz * DT * t;
     // 플레이어: 이번 틱 구간의 끝점만 본다 (한 틱 0.33m < 캡슐 지름이라 건너뛰지 않는다)
-    if (p.action !== 'dead' && (nx - pt.x) ** 2 + (nz - pt.z) ** 2 < r * r && Math.abs(ny - pt.y) < half) {
-      const res = hitPlayer(sim, ARROW_DAMAGE, a.x, a.z, dAtan2Angle(-a.vx, -a.vz), { unparryable: true, knockback: 1.5, source: 'goblin' });
+    const rr = a.fire ? r + 0.25 : r;
+    if (p.action !== 'dead' && (nx - pt.x) ** 2 + (nz - pt.z) ** 2 < rr * rr && Math.abs(ny - pt.y) < half) {
+      const res = hitPlayer(sim, a.fire ? ORB_DAMAGE : ARROW_DAMAGE, a.x, a.z, dAtan2Angle(-a.vx, -a.vz), { unparryable: true, knockback: a.fire ? 3 : 1.5, source: a.fire ? 'balrog' : 'goblin' });
       if (res !== 'iframe') return false; // 회피 무적이면 뚫고 지나간다
     }
     if (hit || --a.ttl <= 0) {

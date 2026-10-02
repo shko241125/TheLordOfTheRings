@@ -220,7 +220,7 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
    */
   const sync = () => {
     for (const e of sim.enemies) {
-      if (e.kind === 'troll' || byId.has(e.id)) continue; // 트롤은 render/troll.ts (고블린·궁수·대장은 여기)
+      if (e.kind === 'troll' || e.kind === 'balrog' || byId.has(e.id)) continue; // 트롤은 render/troll.ts, 발로그는 render/balrog.ts (고블린·궁수·대장·우루크는 여기)
       const g = build(e);
       list.push(g);
       byId.set(e.id, g);

@@ -53,7 +53,7 @@ function validGear(x: unknown): Gear | null {
 }
 
 const ints = (x: unknown): x is number[] => Array.isArray(x) && x.every((n) => Number.isInteger(n));
-const ZONES: readonly ZoneId[] = ['zone1', 'zone2', 'zone3', 'zone4'];
+const ZONES: readonly ZoneId[] = ['zone1', 'zone2', 'zone3', 'zone4', 'zone5'];
 
 function validProgress(p: unknown): Progress | null {
   if (typeof p !== 'object' || p === null) return null;

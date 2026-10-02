@@ -3,10 +3,10 @@
  * 템플릿 × (쓰러뜨린 것·장소·종족) 치환. 같은 죽음이면 같은 문장이 나오도록 틱으로 고른다.
  * 계획서는 템플릿 40종 — 지금은 16종 (M4 발로그 구역과 함께 늘린다).
  */
-export type Killer = 'goblin' | 'troll' | 'collapse' | 'lava' | 'unknown';
+export type Killer = 'goblin' | 'troll' | 'collapse' | 'lava' | 'balrog' | 'fire' | 'unknown';
 
 const WHO: Record<Killer, string> = {
-  goblin: '고블린들', troll: '동굴 트롤', collapse: '무너진 돌기둥', lava: '깊은 곳의 불', unknown: '어둠 속의 무언가',
+  goblin: '고블린들', troll: '동굴 트롤', collapse: '무너진 돌기둥', lava: '깊은 곳의 불', balrog: '두린의 재앙', fire: '뒤쫓아 온 불길', unknown: '어둠 속의 무언가',
 };
 const RACE = { human: '사람', dwarf: '드워프', elf: '요정' } as const;
 

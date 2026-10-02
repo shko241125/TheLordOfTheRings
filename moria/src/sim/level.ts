@@ -12,7 +12,7 @@ export type Solid =
 
 export type EnemySpawn = { pos: Vec3; patrol: readonly Vec3[]; /** 기본 고블린 */ kind?: 'goblin' | 'archer' | 'uruk' };
 
-export type ZoneId = 'zone1' | 'zone2' | 'zone3' | 'zone4';
+export type ZoneId = 'zone1' | 'zone2' | 'zone3' | 'zone4' | 'zone5';
 
 /** 방어전 한 물결의 구성 (sim/defense.ts) */
 export type DefenseWave = { goblins: number; archers: number; uruks: number; horde: number };
@@ -35,7 +35,7 @@ export type Level = {
   /** 화로 위치 (바닥 높이). 받침은 solids에 따로 있다 */
   braziers?: readonly Vec3[];
   /** 보스. 일반 적 다음 id를 받는다 */
-  bosses?: readonly { kind: 'troll' | 'captain'; pos: Vec3; /** 체력바 이름 (없으면 종류 이름) */ name?: string }[];
+  bosses?: readonly { kind: 'troll' | 'captain' | 'balrog'; pos: Vec3; /** 체력바 이름 (없으면 종류 이름) */ name?: string }[];
   /**
    * 무너지는 기둥: 밑동 중심·반지름·높이·넘어지는 방향(x, z)·체력.
    * seals = 굳은 뒤 봉쇄하는 영역 [minX, minY, minZ, maxX, maxY, maxZ] (굴 안쪽 — 주 동선에는 두지 않는다)
@@ -65,6 +65,11 @@ export type Level = {
    * 발판을 누르는 것: 플레이어, 바닥에 놓인(던진 것 포함) 횃불. 횃불 둘을 내려놓고 마지막 발판에 서면 된다
    */
   forge?: { anvil: Vec3; plates: readonly Vec3[]; doors: readonly number[] };
+  /**
+   * 불길 추격 (구역 5 — 발로그전 1페이즈): 플레이어가 triggerZ를 넘으면 불의 벽이 startZ에서 −Z로 speed(m/s)로 다가온다.
+   * 벽에 닿으면 탄다. 플레이어가 safeZ를 넘으면 벽은 멈추고, 첫 보스가 bossAt에 나타난다
+   */
+  chase?: { triggerZ: number; startZ: number; speed: number; safeZ: number; stopZ: number; bossAt: Vec3; halfWidth: number };
   /** 마자르불의 책 조각 (바닥 높이). id는 게임 전체에서 고유 (0..11) */
   pages?: readonly { id: number; pos: Vec3 }[];
   /** 부서지는 원기둥 (solids 번호). 렌더는 이것들을 합치지 않고 따로 그린다 */

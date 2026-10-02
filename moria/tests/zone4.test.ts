@@ -107,7 +107,7 @@ describe('구역 4 — 대장간', () => {
     expect(boss.kind).toBe('captain');
     damageEnemy(s, boss, 1e6);
     run(s, idle(), 2);
-    expect(s.events.find((e) => e.type === 'exit')).toMatchObject({ to: 'end' });
+    expect(s.events.find((e) => e.type === 'exit')).toMatchObject({ to: 'zone5', entry: 'south' });
     expect(progressOf(s).forged).toBe(true);
     disposeSim(s);
   });

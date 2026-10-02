@@ -300,7 +300,14 @@ function locomotion(p: PlayerState, s: ClassStats, input: InputFrame, dir: Retur
 
 /** 공용 이동(move.ts) + 착지 기록 (렌더의 착지 모션용) */
 function moveAndCollide(sim: Sim, p: PlayerState) {
+  // 바깥에서 미는 힘 (발로그): 이번 이동에만 더한다
+  const px = p.pushX, pz = p.pushZ;
+  p.vx += px;
+  p.vz += pz;
   const landed = moveMover(p, p.controller);
+  p.vx -= px;
+  p.vz -= pz;
+  p.pushX = p.pushZ = 0;
   if (landed > 0) {
     p.landedTick = sim.tick + 1;
     p.landedAirTicks = landed;
@@ -348,7 +355,7 @@ function toggleLock(sim: Sim, p: PlayerState) {
 /** unparryable: 패링 창이어도 맞는다 (트롤 내려찍기 — 피해야만 한다). knockback: 밀려나는 속도 (m/s) */
 export function hitPlayer(
   sim: Sim, damage: number, fromX: number, fromZ: number, attackerFacing: number,
-  opts: { unparryable?: boolean; knockback?: number; source?: 'goblin' | 'troll' | 'collapse' } = {},
+  opts: { unparryable?: boolean; knockback?: number; source?: 'goblin' | 'troll' | 'collapse' | 'balrog' | 'fire' } = {},
 ): 'iframe' | 'parry' | 'hit' {
   const p = sim.player;
   if (p.action === 'dodge' && p.actionTick >= DODGE_IFRAME_FROM && p.actionTick < DODGE_IFRAME_TO + p.mods.iframe) return 'iframe';

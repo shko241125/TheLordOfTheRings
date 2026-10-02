@@ -13,6 +13,7 @@ import { TROLL_CAPSULE, TROLL_HP, stepTroll, trollDamaged } from './troll';
 import { ARCHER_HP, stepArcher } from './archer';
 import { CAPTAIN_CAPSULE, CAPTAIN_HP, captainDamaged, stepCaptain } from './captain';
 import { URUK_ATTACK, URUK_CAPSULE, URUK_CHASE, URUK_HP } from './uruk';
+import { BALROG_CAPSULE, BALROG_HP, balrogDamaged, balrogFloor, stepBalrog } from './balrog';
 import { G_CHAR, G_LEVEL, groups, type Enemy, type EnemyKind, type Sim, type SimLight, type V3 } from './types';
 
 /**
@@ -38,14 +39,14 @@ const HIT_STAGGER = 14;
 const PARRIED_STAGGER = 50;
 const LOSE_TICKS = 360;
 
-/** 종류별 캡슐·체력 */
-const CAPSULE: Record<EnemyKind, { half: number; radius: number }> = { goblin: GOBLIN_CAPSULE, archer: GOBLIN_CAPSULE, troll: TROLL_CAPSULE, captain: CAPTAIN_CAPSULE, uruk: URUK_CAPSULE };
-const HP: Record<EnemyKind, number> = { goblin: GOBLIN_HP, archer: ARCHER_HP, troll: TROLL_HP, captain: CAPTAIN_HP, uruk: URUK_HP };
-export const enemyRadius = (k: EnemyKind) => CAPSULE[k].radius;
+/** 종류별 캡슐·체력 (부를 때 만든다 — balrog.ts·captain.ts와 서로 import해서, 모듈을 읽는 순서에 따라 상수가 아직 없을 수 있다) */
+const CAPSULE = (): Record<EnemyKind, { half: number; radius: number }> => ({ goblin: GOBLIN_CAPSULE, archer: GOBLIN_CAPSULE, troll: TROLL_CAPSULE, captain: CAPTAIN_CAPSULE, uruk: URUK_CAPSULE, balrog: BALROG_CAPSULE });
+const HP = (): Record<EnemyKind, number> => ({ goblin: GOBLIN_HP, archer: ARCHER_HP, troll: TROLL_HP, captain: CAPTAIN_HP, uruk: URUK_HP, balrog: BALROG_HP });
+export const enemyRadius = (k: EnemyKind) => CAPSULE()[k].radius;
 
 export function createEnemy(sim: Sim, id: number, pos: V3, patrol: readonly V3[], kind: EnemyKind = 'goblin'): Enemy {
   const body = sim.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos[0], pos[1], pos[2]));
-  const cap = CAPSULE[kind];
+  const cap = CAPSULE()[kind];
   const collider = sim.world.createCollider(
     RAPIER.ColliderDesc.capsule(cap.half, cap.radius).setCollisionGroups(groups(G_CHAR, 0xffff)),
     body,
@@ -53,7 +54,7 @@ export function createEnemy(sim: Sim, id: number, pos: V3, patrol: readonly V3[]
   return {
     id, kind, body, collider,
     vx: 0, vz: 0, vy: 0, facing: 0, grounded: false, airTicks: 0,
-    hp: HP[kind], ai: 'patrol', aiTick: 0, awareness: 0,
+    hp: HP()[kind], ai: 'patrol', aiTick: 0, awareness: 0,
     patrol, patrolIdx: 0, path: [], pathIdx: 0, repathAt: 0,
     hasToken: false, cooldownUntil: 0, hitSet: new Set(),
     orbitSign: id % 2 === 0 ? 1 : -1,
@@ -206,7 +207,12 @@ export function alert(sim: Sim, e: Enemy) {
 }
 
 export function damageEnemy(sim: Sim, e: Enemy, damage: number) {
-  e.hp = Math.max(0, e.hp - damage);
+  // 발로그는 칼로 쓰러뜨릴 수 없다 — 10%에서 멈추고 끝 장면(간달프)으로 간다
+  e.hp = Math.max(e.kind === 'balrog' ? balrogFloor() : 0, e.hp - damage);
+  if (e.kind === 'balrog') {
+    balrogDamaged(sim, e);
+    return;
+  }
   // 우루크가 방패로 막았다 (uruk.urukGuard가 staggerLen 0을 남김): 휘청이지도, 휘두르던 공격을 멈추지도 않는다
   if (e.kind === 'uruk' && e.hp > 0 && e.staggerLen === 0) {
     e.staggerLen = HIT_STAGGER;
@@ -262,6 +268,10 @@ export function stepEnemies(sim: Sim, lights: readonly SimLight[]) {
     }
     if (e.kind === 'captain') {
       stepCaptain(sim, e, lights);
+      continue;
+    }
+    if (e.kind === 'balrog') {
+      stepBalrog(sim, e);
       continue;
     }
     const me = e.body.translation();

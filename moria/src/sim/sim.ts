@@ -21,6 +21,7 @@ import { callCompanion } from './companion';
 import { urukGuard } from './uruk';
 import { createDefense, defenseActive, stepDefense } from './defense';
 import { lavaLights, stepForge } from './forge';
+import { balrogArmor, stepChase } from './balrog';
 import { giveStartingTorch, updateTorches } from './torch';
 import { BTN_CALL, BTN_DODGE, BTN_LIGHT, G_CHAR, G_LEVEL, groups, type InputFrame, type Sim, type SimLight, type V3 } from './types';
 
@@ -87,7 +88,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
       lockTarget: -1, riposteUntil: -1, dodgeDirX: 0, dodgeDirZ: 0,
       heldTorch: -1, spareTorches: 2, senseReadyAt: 0, companion: 0,
       level: 1, xp: 0, points: 0, skills: [], mods: { ...BASE_MODS },
-      inventory: [], equipped: [null, null, null, null, null, null], gold: 0, mithril: 0, darkness: 0,
+      inventory: [], equipped: [null, null, null, null, null, null], gold: 0, mithril: 0, darkness: 0, pushX: 0, pushZ: 0,
     },
     enemies: [],
     enemyController: makeController(world),
@@ -120,6 +121,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
     navBlock: createNavBlock(),
     classId,
     defense: createDefense(),
+    chase: { state: 'idle', z: level.chase?.startZ ?? 0 },
     forge: { lit: false, plates: (level.forge?.plates ?? []).map(() => false) },
     pages: (level.pages ?? []).map((p) => ({ id: p.id, x: p.pos[0], y: p.pos[1], z: p.pos[2], taken: false })),
   };
@@ -155,13 +157,14 @@ function resolvePlayerAttack(sim: Sim, lights: readonly SimLight[]) {
     if (e.ai === 'dead' || p.hitSet.has(e.id)) continue;
     const t = e.body.translation();
     const radius = e.kind === 'goblin' || e.kind === 'archer' ? 0.3 : enemyRadius(e.kind);
-    if (!inArc(me.x, me.y, me.z, p.facing, t.x, t.y, t.z, radius, a.reach, a.halfArc)) continue;
+    // 발로그는 키가 6m라 몸 중심이 칼 높이보다 한참 위다 → 높이는 보지 않는다
+    if (!inArc(me.x, me.y, me.z, p.facing, t.x, e.kind === 'balrog' ? me.y : t.y, t.z, radius, a.reach, a.halfArc)) continue;
     p.hitSet.add(e.id);
     const riposte = sim.tick < p.riposteUntil;
     const dark = darkMultiplier(sim, lights);
     const m = p.mods;
     // 우루크 방패: 앞에서 온 약공격은 20% — 강공격·반격은 방패를 깬다
-    const guard = e.kind === 'uruk' ? urukGuard(sim, e, me.x, me.z, a.id === 'heavy' || riposte) : 1;
+    const guard = e.kind === 'uruk' ? urukGuard(sim, e, me.x, me.z, a.id === 'heavy' || riposte) : e.kind === 'balrog' ? balrogArmor(e) : 1;
     const dmg = Math.round(a.damage * m.dmg * (a.id === 'heavy' ? m.heavy : 1) * (riposte ? RIPOSTE_MULT + m.riposte : 1) * dark * guard);
     if (riposte) p.riposteUntil = -1;
     damageEnemy(sim, e, dmg);
@@ -231,6 +234,7 @@ export function stepSim(sim: Sim, input: InputFrame): void {
   stepCollapses(sim);
   stepDefense(sim);
   stepForge(sim);
+  stepChase(sim);
   // 문이 닫힌 동안(서문 밖)은 디렉터가 쉰다 — 내비메시는 문을 열린 상태로 보므로 물결이 문에 막혀 버린다
   // 보스전 중에도 쉰다 (L4D의 보스 이벤트처럼 물결과 겹치지 않게)
   if (sim.doors.every((d) => d.open) && !bossAwake(sim) && !defenseActive(sim)) stepDirector(sim, lights);
@@ -272,9 +276,11 @@ export function hashSim(sim: Sim): number {
   for (const e of sim.enemies) {
     h = mix(h, e.id, e.hp, e.awareness, e.facing, e.vx, e.vz, e.aiTick, e.swingTick, e.hasToken ? 1 : 0, e.cooldownUntil);
     if (e.kind === 'troll') h = mix(h, ['', 'slam', 'sweep'].indexOf(e.move), e.aimX, e.aimZ);
-    else if (e.kind !== 'goblin') h = mix(h, ['', 'slam', 'sweep', 'shoot', 'combo', 'charge'].indexOf(e.move), e.aimX, e.aimZ, e.step, e.used);
+    else if (e.kind !== 'goblin') h = mix(h, ['', 'slam', 'sweep', 'shoot', 'combo', 'charge', 'wind', 'orb', 'whip', 'wave'].indexOf(e.move), e.aimX, e.aimZ, e.step, e.used);
   }
   for (const p of sim.pillars) h = mix(h, p.body ? 1 : 0);
+  if (p.pushX || p.pushZ) h = mix(h, p.pushX, p.pushZ);
+  if (sim.chase.state !== 'idle') h = mix(h, ['idle', 'run', 'done'].indexOf(sim.chase.state), sim.chase.z);
   h = mix(h, p.companion, p.level, p.xp, p.points, p.maxHp, ...p.skills);
   if (p.inventory.length || p.gold || p.mithril || sim.loot.length || sim.nextItemId || p.equipped.some(Boolean)) {
     h = mix(h, p.gold, p.mithril, p.darkness, sim.loot.length, sim.nextLootId, sim.nextItemId, ...p.inventory.map((i) => i.id), ...p.equipped.map((i) => (i ? i.id * 8 + i.upgrade : -1)));

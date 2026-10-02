@@ -121,13 +121,16 @@ export type PlayerState = Mover & {
   mithril: number;
   /** 최근 어둠에 머문 비율 0..1 (지수 이동 평균) — 전리품 등급 */
   darkness: number;
+  /** 바깥에서 미는 속도 (m/s, 다음 이동 한 번에만 더해지고 0이 된다 — 발로그 날개 바람·채찍) */
+  pushX: number;
+  pushZ: number;
 };
 
 export type EnemyAI = 'patrol' | 'suspicious' | 'chase' | 'engage' | 'attack' | 'stagger' | 'dead';
 
-export type EnemyKind = 'goblin' | 'troll' | 'archer' | 'captain' | 'uruk';
+export type EnemyKind = 'goblin' | 'troll' | 'archer' | 'captain' | 'uruk' | 'balrog';
 /** 트롤 기술 ('' = 없음) */
-export type TrollMove = '' | 'slam' | 'sweep' | 'shoot' | 'combo' | 'charge';
+export type TrollMove = '' | 'slam' | 'sweep' | 'shoot' | 'combo' | 'charge' | 'wind' | 'orb' | 'whip' | 'wave';
 
 export type Enemy = Mover & {
   readonly id: number;
@@ -215,7 +218,7 @@ export type DirectorState = {
 /** 렌더가 소비하는 일회성 사건 (시뮬레이션은 읽지 않는다 → 결정성과 무관) */
 export type SimEvent =
   | { type: 'hit'; tick: number; target: number; x: number; y: number; z: number; heavy: boolean; dark: number }
-  | { type: 'playerHit'; tick: number; damage: number; source: 'goblin' | 'troll' | 'collapse' | 'lava' }
+  | { type: 'playerHit'; tick: number; damage: number; source: 'goblin' | 'troll' | 'collapse' | 'lava' | 'balrog' | 'fire' }
   | { type: 'parry'; tick: number; enemy: number }
   | { type: 'death'; tick: number; enemy: number }
   | { type: 'swing'; tick: number; actor: number; attack: string }
@@ -245,6 +248,8 @@ export type SimEvent =
   | { type: 'page'; tick: number; id: number }
   | { type: 'plate'; tick: number; index: number; down: boolean }
   | { type: 'forge'; tick: number }
+  | { type: 'chase'; tick: number; stage: 'start' | 'end' }
+  | { type: 'balrog'; tick: number; stage: 'wake' | 'phase3' | 'exposed' | 'break' | 'fall' }
   | { type: 'rest'; tick: number; brazier: number; first: boolean };
 
 export type Sim = {
@@ -299,6 +304,8 @@ export type Sim = {
   readonly classId: import('./classes').ClassId;
   /** 방어전 (구역 3) */
   defense: import('./defense').DefenseState;
+  /** 불길 추격 (구역 5): 불의 벽이 z를 따라 다가온다 */
+  chase: { state: 'idle' | 'run' | 'done'; z: number };
   /** 대장간 (구역 4): 모루가 타오른다, 발판마다 눌림 */
   forge: { lit: boolean; plates: boolean[] };
   /** 마자르불의 책 조각 (이 구역에 놓인 것) */
