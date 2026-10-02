@@ -12,7 +12,7 @@ import type { InputFrame } from '../sim/types';
 export type ReplayHeader = {
   v: 1 | 2;
   simVersion: string;
-  zone: 'zone1' | 'zone2' | 'test';
+  zone: import('../sim/level').ZoneId | 'test';
   seed: number;
   classId: ClassId;
   /** 체크포인트 스냅샷의 틱 (입력은 이 틱부터) */

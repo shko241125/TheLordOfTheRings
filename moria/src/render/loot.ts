@@ -4,6 +4,7 @@ import type { Sim } from '../sim/types';
 
 /**
  * 바닥 전리품 (렌더 전용): 장비 = 등급 색으로 빛나는 작은 상자(희귀 이상은 빛기둥), 금화 = 금빛 조각, 미스릴 = 은청색 결정.
+ * 마자르불의 책 조각 = 바닥의 빛바랜 양피지 + 희미한 빛기둥 (주우면 사라진다).
  * 어두운 동굴에서 보여야 하므로 빛을 받지 않는 재질(스스로 빛남)이다.
  */
 export function createLootView(sim: Sim, parent: Object3D) {
@@ -17,10 +18,21 @@ export function createLootView(sim: Sim, parent: Object3D) {
   const goldMat = new MeshBasicMaterial({ color: 0xffc040 });
   const mithrilMat = new MeshBasicMaterial({ color: 0xa8d8ff });
   const views = new Map<number, Group>();
+  const pageGeo = new BoxGeometry(0.32, 0.03, 0.24);
+  const pageMat = new MeshBasicMaterial({ color: 0xe8d8a8 });
+  const pageBeam = new MeshBasicMaterial({ color: 0xe8d8a8, transparent: true, opacity: 0.25, depthWrite: false });
+  const pages = sim.pages.map((pg) => {
+    const g = new Group();
+    g.add(new Mesh(pageGeo, pageMat), new Mesh(beamGeo, pageBeam));
+    g.position.set(pg.x, pg.y + 0.05, pg.z);
+    parent.add(g);
+    return g;
+  });
   let clock = 0;
   return {
     update(dt: number) {
       clock += dt;
+      sim.pages.forEach((pg, i) => (pages[i]!.visible = !pg.taken));
       const alive = new Set<number>();
       for (const l of sim.loot) {
         alive.add(l.id);

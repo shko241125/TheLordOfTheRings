@@ -8,9 +8,10 @@ import type { Item } from './sim/items';
  * setItem은 값 하나를 통째로 바꾸므로 '반쯤 쓴 저장'이 생기지 않는다 → 계획서의 idb-keyval + 2단계 쓰기는 필요 없었다.
  * 읽을 때는 버전을 한 단계씩 올린 뒤(migrate) 모양을 검사하고, 틀리면 버린다 (새 게임). 저장소가 막힌 환경에서는 조용히 실패.
  *   v1: 진행 상태 하나 / v2: + 보스 처치 / v3: 구역별 진행 상태 + 현재 구역·입구 + 성장(레벨·XP·스킬) / v4: + 장비(인벤토리·장착·금화·미스릴)
+ *   / v5: + 마자르불의 책 조각(게임 전체 id), 구역 진행에 방어전 완료
  */
 const KEY = 'moria.save';
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export type Growth = { level: number; xp: number; points: number; skills: number[] };
 export type Gear = { inventory: Item[]; equipped: (Item | null)[]; gold: number; mithril: number };
@@ -25,6 +26,8 @@ export type SaveData = {
   progress: Partial<Record<ZoneId, Progress>>;
   growth: Growth;
   gear: Gear;
+  /** 주운 마자르불의 책 조각 id */
+  pages: number[];
 };
 
 const SLOTS = ['weapon', 'offhand', 'head', 'body', 'trinket'];
@@ -50,14 +53,15 @@ function validGear(x: unknown): Gear | null {
 }
 
 const ints = (x: unknown): x is number[] => Array.isArray(x) && x.every((n) => Number.isInteger(n));
-const ZONES: readonly ZoneId[] = ['zone1', 'zone2'];
+const ZONES: readonly ZoneId[] = ['zone1', 'zone2', 'zone3'];
 
 function validProgress(p: unknown): Progress | null {
   if (typeof p !== 'object' || p === null) return null;
   const r = p as Record<string, unknown>;
   const lampsLit = r.lampsLit ?? [];
   if (!ints(r.doorsOpen) || !ints(r.lit) || !Number.isInteger(r.checkpoint) || !ints(r.bossesDown) || !ints(lampsLit)) return null;
-  return { doorsOpen: r.doorsOpen, lit: r.lit, checkpoint: r.checkpoint as number, bossesDown: r.bossesDown, lampsLit };
+  if (r.defended !== undefined && typeof r.defended !== 'boolean') return null;
+  return { doorsOpen: r.doorsOpen, lit: r.lit, checkpoint: r.checkpoint as number, bossesDown: r.bossesDown, lampsLit, ...(r.defended ? { defended: true } : {}) };
 }
 
 /** 옛 버전 → 현재 버전. 한 단계씩 올린다 */
@@ -71,6 +75,7 @@ export function migrate(raw: unknown): SaveData | null {
     r = { v: 3, classId: r.classId, zone: 'zone1', entry: null, progress: { zone1: r.progress }, growth: { level: 1, xp: 0, points: 0, skills: [] } };
   }
   if (r.v === 3) r = { ...r, v: 4, gear: EMPTY_GEAR };
+  if (r.v === 4) r = { ...r, v: 5, pages: [] };
   if (r.v !== SAVE_VERSION || !['human', 'dwarf', 'elf'].includes(r.classId as string)) return null;
   if (!ZONES.includes(r.zone as ZoneId) || (r.entry !== null && typeof r.entry !== 'string')) return null;
   const progress: Partial<Record<ZoneId, Progress>> = {};
@@ -84,10 +89,10 @@ export function migrate(raw: unknown): SaveData | null {
   const g = r.growth as Partial<Growth> | undefined;
   if (!g || !Number.isInteger(g.level) || !Number.isInteger(g.xp) || !Number.isInteger(g.points) || !ints(g.skills)) return null;
   const gear = validGear(r.gear);
-  if (!gear) return null;
+  if (!gear || !ints(r.pages)) return null;
   return {
     v: SAVE_VERSION, classId: r.classId as ClassId, zone: r.zone as ZoneId, entry: (r.entry as string | null) ?? null,
-    progress, growth: { level: g.level!, xp: g.xp!, points: g.points!, skills: g.skills }, gear,
+    progress, growth: { level: g.level!, xp: g.xp!, points: g.points!, skills: g.skills }, gear, pages: r.pages,
   };
 }
 

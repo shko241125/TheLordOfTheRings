@@ -18,6 +18,8 @@ import { DARK_EMA, stepLoot } from './gear';
 import { createHorde, stepHorde } from './horde';
 import { createCollapses, createNavBlock, damageCollapse, stepCollapses } from './collapse';
 import { callCompanion } from './companion';
+import { urukGuard } from './uruk';
+import { createDefense, defenseActive, stepDefense } from './defense';
 import { giveStartingTorch, updateTorches } from './torch';
 import { BTN_CALL, BTN_DODGE, BTN_LIGHT, G_CHAR, G_LEVEL, groups, type InputFrame, type Sim, type SimLight, type V3 } from './types';
 
@@ -116,6 +118,8 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
     exitLockedShown: false,
     navBlock: createNavBlock(),
     classId,
+    defense: createDefense(),
+    pages: (level.pages ?? []).map((p) => ({ id: p.id, x: p.pos[0], y: p.pos[1], z: p.pos[2], taken: false })),
   };
   // 붕괴 기둥: 레벨·문 바디 다음, 플레이어보다 뒤 — 생성 순서 고정 (결정성 규칙 4)
   sim.collapses.push(...createCollapses(sim, level));
@@ -154,7 +158,9 @@ function resolvePlayerAttack(sim: Sim, lights: readonly SimLight[]) {
     const riposte = sim.tick < p.riposteUntil;
     const dark = darkMultiplier(sim, lights);
     const m = p.mods;
-    const dmg = Math.round(a.damage * m.dmg * (a.id === 'heavy' ? m.heavy : 1) * (riposte ? RIPOSTE_MULT + m.riposte : 1) * dark);
+    // 우루크 방패: 앞에서 온 약공격은 20% — 강공격·반격은 방패를 깬다
+    const guard = e.kind === 'uruk' ? urukGuard(sim, e, me.x, me.z, a.id === 'heavy' || riposte) : 1;
+    const dmg = Math.round(a.damage * m.dmg * (a.id === 'heavy' ? m.heavy : 1) * (riposte ? RIPOSTE_MULT + m.riposte : 1) * dark * guard);
     if (riposte) p.riposteUntil = -1;
     damageEnemy(sim, e, dmg);
     sim.hitstop = Math.max(sim.hitstop, riposte ? a.hitstop + 4 : a.hitstop);
@@ -221,9 +227,10 @@ export function stepSim(sim: Sim, input: InputFrame): void {
   stepArrows(sim);
   stepLoot(sim);
   stepCollapses(sim);
+  stepDefense(sim);
   // 문이 닫힌 동안(서문 밖)은 디렉터가 쉰다 — 내비메시는 문을 열린 상태로 보므로 물결이 문에 막혀 버린다
   // 보스전 중에도 쉰다 (L4D의 보스 이벤트처럼 물결과 겹치지 않게)
-  if (sim.doors.every((d) => d.open) && !bossAwake(sim)) stepDirector(sim, lights);
+  if (sim.doors.every((d) => d.open) && !bossAwake(sim) && !defenseActive(sim)) stepDirector(sim, lights);
   updateTorches(sim);
   pruneNoise(sim);
   sim.world.step();
@@ -274,6 +281,8 @@ export function hashSim(sim: Sim): number {
     h = mix(h, sim.arrows.length, sim.nextArrowId);
     for (const a of sim.arrows) h = mix(h, a.id, a.x, a.y, a.z, a.ttl);
   }
+  if (sim.defense.state !== 'idle') h = mix(h, ['idle', 'warn', 'wave', 'rest', 'done'].indexOf(sim.defense.state), sim.defense.wave, sim.defense.tick);
+  if (sim.pages.some((x) => x.taken)) h = mix(h, ...sim.pages.map((x) => (x.taken ? 1 : 0)));
   if (sim.lamps.length) h = mix(h, ...sim.lamps.map((l) => (l.lit ? 1 : 0)), sim.exited ? 1 : 0);
   for (const c of sim.collapses) {
     h = mix(h, c.hp, ['standing', 'falling', 'down'].indexOf(c.state), c.tick);

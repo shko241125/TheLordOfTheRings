@@ -27,6 +27,8 @@ export function createHud() {
     #boss { position: fixed; left: 50%; top: 22px; width: min(460px, 70vw); transform: translateX(-50%); pointer-events: none; display: none; font: 15px/1.4 serif; color: #e6d6b8; text-align: center; text-shadow: 0 0 5px #000; }
     #boss .bar { height: 9px; margin-top: 4px; background: rgba(0,0,0,.6); border: 1px solid rgba(203,189,158,.4); }
     #boss .bar > i { display: block; height: 100%; background: #8e2a1c; transition: width .12s linear; }
+    #page { position: fixed; left: 50%; bottom: 30%; transform: translateX(-50%); max-width: min(560px, 88vw); padding: 12px 18px; background: rgba(30,22,12,.82); border: 1px solid rgba(203,189,158,.45); font: italic 16px/1.6 serif; color: #e6d6b8; pointer-events: none; opacity: 0; transition: opacity .4s; }
+    #page b { display: block; font: 600 13px/1.4 serif; font-style: normal; color: #cbbd9e; margin-bottom: 4px; }
     #minimap { position: fixed; right: 16px; top: 16px; pointer-events: none; opacity: .85; }
     .gob-mark { position: fixed; left: 0; top: 0; font: 700 22px/1 serif; color: #ffcf6a; text-shadow: 0 0 6px #000, 0 0 2px #000; pointer-events: none; display: none; }
   `;
@@ -42,7 +44,9 @@ export function createHud() {
   const prompt = Object.assign(document.createElement('div'), { id: 'prompt' });
   const boss = Object.assign(document.createElement('div'), { id: 'boss' });
   boss.innerHTML = '<span></span><div class="bar"><i></i></div>';
-  document.body.append(root, lock, toast, dead, prompt, boss);
+  const page = Object.assign(document.createElement('div'), { id: 'page' });
+  document.body.append(root, lock, toast, dead, prompt, boss, page);
+  let pageUntil = 0;
   const hp = root.querySelector<HTMLElement>('#hp > i')!;
   const st = root.querySelector<HTMLElement>('#st > i')!;
   const stBar = root.querySelector<HTMLElement>('#st')!;
@@ -53,6 +57,14 @@ export function createHud() {
   let clock = 0;
 
   return {
+    /** 마자르불의 책 조각 한 장 (몇 초 보였다 사라진다) */
+    page(title: string, text: string, seconds = 9) {
+      page.innerHTML = '<b></b><span></span>';
+      page.querySelector('b')!.textContent = title;
+      page.querySelector('span')!.textContent = `“${text}”`;
+      page.style.opacity = '1';
+      pageUntil = clock + seconds;
+    },
     toast(text: string, seconds = 0.8) {
       toast.textContent = text;
       toast.style.opacity = '1';
@@ -85,6 +97,8 @@ export function createHud() {
       const text = !target || hidden ? ''
         : target.kind === 'door' ? '비문 읽기'
         : target.kind === 'lamp' ? '등불 밝히기'
+        : target.kind === 'tomb' ? '발린의 무덤 — 책을 펼친다 (방어전 시작)'
+        : target.kind === 'page' ? '마자르불의 책 조각 줍기'
         : target.kind === 'loot' ? `줍기 — <span style="color:${GRADE_COLORS[target.grade]}">${GRADE_NAMES[target.grade]} ${target.name}</span>`
         : target.lit ? '쉬기 (저장)' : '화로 밝히기';
       prompt.style.display = text ? 'block' : 'none';
@@ -107,6 +121,7 @@ export function createHud() {
         lock.style.top = `${lockScreen.y}px`;
       } else lock.style.display = 'none';
       if (clock > toastUntil) toast.style.opacity = '0';
+      if (clock > pageUntil) page.style.opacity = '0';
       if (deathMode === 'auto') dead.style.display = p.action === 'dead' ? 'grid' : 'none';
     },
   };

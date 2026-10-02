@@ -1,3 +1,4 @@
+import { finishDefense, startDefense } from './defense';
 import { LOOT_PICK_R, pickupItem } from './gear';
 import { BTN_INTERACT, BTN_WORD, type Sim } from './types';
 
@@ -10,7 +11,9 @@ export type Interactable =
   | { kind: 'brazier'; index: number; lit: boolean }
   | { kind: 'door'; index: number }
   | { kind: 'lamp'; index: number }
-  | { kind: 'loot'; id: number; name: string; grade: number };
+  | { kind: 'loot'; id: number; name: string; grade: number }
+  | { kind: 'tomb' }
+  | { kind: 'page'; index: number };
 
 /** 지금 플레이어가 상호작용할 수 있는 가장 가까운 대상 (렌더의 안내 문구와 시뮬레이션이 같은 판정을 쓴다) */
 export function nearestInteractable(sim: Sim): Interactable | null {
@@ -41,6 +44,22 @@ export function nearestInteractable(sim: Sim): Interactable | null {
     if (!l.lit && d <= INTERACT_RANGE + 0.6 && Math.abs(l.y + 1 - t.y) < 2 && d < bestD) {
       bestD = d;
       best = { kind: 'lamp', index: i };
+    }
+  }
+  const def = sim.level.defense;
+  if (def && sim.defense.state === 'idle') {
+    const d = dist(def.at[0], def.at[2]);
+    if (d <= INTERACT_RANGE + 1 && Math.abs(def.at[1] + 1 - t.y) < 2 && d < bestD) {
+      bestD = d;
+      best = { kind: 'tomb' };
+    }
+  }
+  for (let i = 0; i < sim.pages.length; i++) {
+    const pg = sim.pages[i]!;
+    const d = dist(pg.x, pg.z);
+    if (!pg.taken && d <= INTERACT_RANGE && Math.abs(pg.y + 1 - t.y) < 2 && d < bestD) {
+      bestD = d;
+      best = { kind: 'page', index: i };
     }
   }
   for (let i = 0; i < sim.doors.length; i++) {
@@ -84,6 +103,12 @@ export function stepInteract(sim: Sim, pressed: number) {
   if (target.kind === 'brazier' && (pressed & BTN_INTERACT) !== 0) restAt(sim, target.index);
   else if (target.kind === 'lamp' && (pressed & BTN_INTERACT) !== 0) lightLamp(sim, target.index);
   else if (target.kind === 'loot' && (pressed & BTN_INTERACT) !== 0) pickupItem(sim, target.id);
+  else if (target.kind === 'tomb' && (pressed & BTN_INTERACT) !== 0) startDefense(sim);
+  else if (target.kind === 'page' && (pressed & BTN_INTERACT) !== 0) {
+    const pg = sim.pages[target.index]!;
+    pg.taken = true;
+    sim.events.push({ type: 'page', tick: sim.tick, id: pg.id });
+  }
   else if (target.kind === 'door' && (pressed & BTN_WORD) !== 0) {
     openDoor(sim, target.index);
     sim.events.push({ type: 'door', tick: sim.tick, door: target.index });
@@ -115,7 +140,9 @@ export function stepExits(sim: Sim) {
     if (t.x < x.min[0] || t.x > x.max[0] || t.y < x.min[1] || t.y > x.max[1] || t.z < x.min[2] || t.z > x.max[2]) continue;
     inside = true;
     const ok = (x.requires ?? []).every((r) =>
-      r === 'bosses' ? sim.bosses.every((id) => sim.enemies.find((e) => e.id === id)?.ai === 'dead') : sim.lamps.every((l) => l.lit),
+      r === 'bosses' ? sim.bosses.every((id) => sim.enemies.find((e) => e.id === id)?.ai === 'dead')
+        : r === 'lamps' ? sim.lamps.every((l) => l.lit)
+          : sim.defense.state === 'done',
     );
     if (ok) {
       sim.exited = true;
@@ -139,6 +166,8 @@ export type Progress = {
   bossesDown: number[];
   /** 밝힌 퀘스트 등불 */
   lampsLit: number[];
+  /** 방어전을 끝냈다 (구역 3) */
+  defended?: boolean;
 };
 
 export function progressOf(sim: Sim): Progress {
@@ -148,6 +177,7 @@ export function progressOf(sim: Sim): Progress {
     checkpoint: sim.checkpoint,
     bossesDown: sim.bosses.flatMap((id, i) => (sim.enemies.find((e) => e.id === id)?.ai === 'dead' ? [i] : [])),
     lampsLit: sim.lamps.flatMap((l, i) => (l.lit ? [i] : [])),
+    ...(sim.defense.state === 'done' ? { defended: true } : {}),
   };
 }
 
@@ -156,6 +186,7 @@ export function restoreProgress(sim: Sim, pr: Progress, entry: string | null = n
   for (const i of pr.doorsOpen) if (sim.doors[i]) openDoor(sim, i);
   for (const i of pr.lampsLit ?? []) lightLamp(sim, i, true);
   for (const i of pr.lit) if (sim.braziers[i]) sim.braziers[i]!.lit = true;
+  if (pr.defended) finishDefense(sim, true);
   for (const i of pr.bossesDown) {
     const e = sim.enemies.find((x) => x.id === sim.bosses[i]);
     if (!e) continue;
@@ -177,4 +208,9 @@ export function restoreProgress(sim: Sim, pr: Progress, entry: string | null = n
   sim.checkpoint = pr.checkpoint;
   // 화로 1.5m 앞(+Z)에서, 캡슐 중심은 바닥 + 1.2m (레벨 spawn과 같은 규칙)
   sim.player.body.setTranslation({ x: b.x, y: b.y + 1.2, z: b.z + 1.5 }, true);
+}
+
+/** 저장에서: 이미 주운 책 조각 (게임 전체의 id) */
+export function restorePages(sim: Sim, ids: readonly number[]) {
+  for (const pg of sim.pages) if (ids.includes(pg.id)) pg.taken = true;
 }

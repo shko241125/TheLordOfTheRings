@@ -19,7 +19,7 @@ export const BASE_HP = 100;
 export const xpToNext = (level: number) => Math.round(100 * level * Math.sqrt(level));
 
 /** 처치 XP */
-export const XP = { goblin: 10, archer: 15, horde: 2, troll: 150, captain: 200 } as const;
+export const XP = { goblin: 10, archer: 15, uruk: 30, horde: 2, troll: 150, captain: 200 } as const;
 
 export type Mods = {
   /** 피해 배율 */

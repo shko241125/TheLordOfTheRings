@@ -60,7 +60,7 @@ describe('구역 2 — 21번째 홀', () => {
     cap.hp = 0;
     cap.ai = 'dead';
     run(s, idle(), 3);
-    expect(s.events.find((e) => e.type === 'exit')).toMatchObject({ to: 'end' });
+    expect(s.events.find((e) => e.type === 'exit')).toMatchObject({ to: 'zone3', entry: 'south' });
     disposeSim(s);
   });
 

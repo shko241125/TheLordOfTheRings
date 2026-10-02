@@ -125,7 +125,7 @@ export type PlayerState = Mover & {
 
 export type EnemyAI = 'patrol' | 'suspicious' | 'chase' | 'engage' | 'attack' | 'stagger' | 'dead';
 
-export type EnemyKind = 'goblin' | 'troll' | 'archer' | 'captain';
+export type EnemyKind = 'goblin' | 'troll' | 'archer' | 'captain' | 'uruk';
 /** 트롤 기술 ('' = 없음) */
 export type TrollMove = '' | 'slam' | 'sweep' | 'shoot' | 'combo' | 'charge';
 
@@ -163,7 +163,7 @@ export type Enemy = Mover & {
   fromHorde: boolean;
   /** 기술 안의 단계 (대장 3연타의 몇 번째) */
   step: number;
-  /** 한 번만 쓰는 기술 표시 비트 (대장 휘파람) */
+  /** 한 번만 쓰는 기술 표시 비트 (대장 휘파람). 우루크는 방패가 깨진 동안의 끝 틱 */
   used: number;
 };
 
@@ -239,6 +239,10 @@ export type SimEvent =
   | { type: 'skill'; tick: number; index: number }
   | { type: 'collapse'; tick: number; index: number; stage: 'fall' | 'impact' | 'settled' }
   | { type: 'companion'; tick: number; who: string; line: string; x: number; y: number; z: number; facing: number; radius: number; halfArc: number; killed: number }
+  | { type: 'block'; tick: number; enemy: number }
+  | { type: 'guardBreak'; tick: number; enemy: number }
+  | { type: 'defense'; tick: number; stage: 'start' | 'wave' | 'clear' | 'done'; wave: number; of: number }
+  | { type: 'page'; tick: number; id: number }
   | { type: 'rest'; tick: number; brazier: number; first: boolean };
 
 export type Sim = {
@@ -291,6 +295,10 @@ export type Sim = {
   /** 잔해가 막은 내비메시 폴리곤을 빼는 경로 필터 */
   readonly navBlock: import('./collapse').NavBlock;
   readonly classId: import('./classes').ClassId;
+  /** 방어전 (구역 3) */
+  defense: import('./defense').DefenseState;
+  /** 마자르불의 책 조각 (이 구역에 놓인 것) */
+  readonly pages: { readonly id: number; readonly x: number; readonly y: number; readonly z: number; taken: boolean }[];
 };
 
 /** 충돌 그룹: (소속 << 16) | 필터 */

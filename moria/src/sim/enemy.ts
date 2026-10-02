@@ -12,6 +12,7 @@ import { dropLoot } from './gear';
 import { TROLL_CAPSULE, TROLL_HP, stepTroll, trollDamaged } from './troll';
 import { ARCHER_HP, stepArcher } from './archer';
 import { CAPTAIN_CAPSULE, CAPTAIN_HP, captainDamaged, stepCaptain } from './captain';
+import { URUK_ATTACK, URUK_CAPSULE, URUK_CHASE, URUK_HP } from './uruk';
 import { G_CHAR, G_LEVEL, groups, type Enemy, type EnemyKind, type Sim, type SimLight, type V3 } from './types';
 
 /**
@@ -38,8 +39,8 @@ const PARRIED_STAGGER = 50;
 const LOSE_TICKS = 360;
 
 /** 종류별 캡슐·체력 */
-const CAPSULE: Record<EnemyKind, { half: number; radius: number }> = { goblin: GOBLIN_CAPSULE, archer: GOBLIN_CAPSULE, troll: TROLL_CAPSULE, captain: CAPTAIN_CAPSULE };
-const HP: Record<EnemyKind, number> = { goblin: GOBLIN_HP, archer: ARCHER_HP, troll: TROLL_HP, captain: CAPTAIN_HP };
+const CAPSULE: Record<EnemyKind, { half: number; radius: number }> = { goblin: GOBLIN_CAPSULE, archer: GOBLIN_CAPSULE, troll: TROLL_CAPSULE, captain: CAPTAIN_CAPSULE, uruk: URUK_CAPSULE };
+const HP: Record<EnemyKind, number> = { goblin: GOBLIN_HP, archer: ARCHER_HP, troll: TROLL_HP, captain: CAPTAIN_HP, uruk: URUK_HP };
 export const enemyRadius = (k: EnemyKind) => CAPSULE[k].radius;
 
 export function createEnemy(sim: Sim, id: number, pos: V3, patrol: readonly V3[], kind: EnemyKind = 'goblin'): Enemy {
@@ -206,6 +207,12 @@ export function alert(sim: Sim, e: Enemy) {
 
 export function damageEnemy(sim: Sim, e: Enemy, damage: number) {
   e.hp = Math.max(0, e.hp - damage);
+  // 우루크가 방패로 막았다 (uruk.urukGuard가 staggerLen 0을 남김): 휘청이지도, 휘두르던 공격을 멈추지도 않는다
+  if (e.kind === 'uruk' && e.hp > 0 && e.staggerLen === 0) {
+    e.staggerLen = HIT_STAGGER;
+    alert(sim, e);
+    return;
+  }
   releaseToken(sim, e);
   if (e.hp === 0) {
     setAI(e, 'dead');
@@ -231,8 +238,10 @@ export function damageEnemy(sim: Sim, e: Enemy, damage: number) {
     return;
   }
   alert(sim, e);
+  // 우루크는 urukGuard가 정한 길이 (방패가 깨지면 60), 그 밖은 보통 휘청임
+  const len = e.kind === 'uruk' ? e.staggerLen : HIT_STAGGER;
   setAI(e, 'stagger');
-  e.staggerLen = HIT_STAGGER;
+  e.staggerLen = len;
 }
 
 export function stepEnemies(sim: Sim, lights: readonly SimLight[]) {
@@ -284,7 +293,7 @@ export function stepEnemies(sim: Sim, lights: readonly SimLight[]) {
           e.awareness = 0;
           break;
         }
-        followPath(sim, e, [pt.x, pt.y, pt.z], CHASE_SPEED);
+        followPath(sim, e, [pt.x, pt.y, pt.z], e.kind === 'uruk' ? URUK_CHASE : CHASE_SPEED);
         if (dist < ENGAGE_R + 1.5) setAI(e, 'engage');
         // 오래 못 보면 포기
         if (e.aiTick > LOSE_TICKS && dist > SIGHT) {
@@ -319,7 +328,7 @@ export function stepEnemies(sim: Sim, lights: readonly SimLight[]) {
         break;
       }
       case 'attack': {
-        const a = GOBLIN_ATTACK;
+        const a = e.kind === 'uruk' ? URUK_ATTACK : GOBLIN_ATTACK;
         if (e.swingTick < 0) {
           // 접근: 사거리 안까지
           steerTo(e, pt.x, pt.z, APPROACH_SPEED, false);

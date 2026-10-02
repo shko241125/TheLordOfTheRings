@@ -23,7 +23,9 @@ import { applyQuality, createQualityGuard, detectQuality, type Quality } from '.
 import { createRenderer } from './render/renderer';
 import { buildScene, type LooseTorch } from './render/scene';
 import { CLASS_STATS, type ClassId } from './sim/classes';
-import { nearestInteractable, progressOf, restoreProgress } from './sim/interact';
+import { nearestInteractable, progressOf, restorePages, restoreProgress } from './sim/interact';
+import { PAGE_COUNT, PAGE_TEXTS } from './pages';
+import { defenseActive } from './sim/defense';
 import { TEST_ROOM } from './sim/level';
 import { BTN_LOCK, BTN_WORD, createSim, hashSim, stepSim } from './sim/sim';
 import { createTouch } from './core/touch';
@@ -113,14 +115,18 @@ async function boot() {
     restoreProgress(sim, pr ?? { doorsOpen: [], lit: [], checkpoint: -1, bossesDown: [], lampsLit: [] }, save.entry);
     restoreGear(sim, save.gear);
     restoreGrowth(sim, save.growth);
+    restorePages(sim, save.pages);
   }
+  /** 주운 책 조각 (모든 구역) */
+  const pagesAll = new Set(save?.pages ?? []);
   const growthOf = () => ({ level: sim.player.level, xp: sim.player.xp, points: sim.player.points, skills: [...sim.player.skills] });
   const gearOf = () => ({ inventory: sim.player.inventory, equipped: sim.player.equipped, gold: sim.player.gold, mithril: sim.player.mithril });
   /** 저장: 이 구역 진행 상태 + 성장. 구역을 옮길 때는 옮겨 갈 구역·입구를 준다 */
   const saveNow = (zone: ZoneId = zoneId, entry: string | null = save?.entry ?? null) => {
     if (noSave) return false;
     progressAll[zoneId] = progressOf(sim);
-    return writeSave({ classId, zone, entry, progress: progressAll, growth: growthOf(), gear: gearOf() });
+    for (const pg of sim.pages) if (pg.taken) pagesAll.add(pg.id);
+    return writeSave({ classId, zone, entry, progress: progressAll, growth: growthOf(), gear: gearOf(), pages: [...pagesAll].sort((a, b) => a - b) });
   };
   if (replay) {
     // 체크포인트에서 '보여 줄 시작'(쓰러지기 60초 전)까지 그리지 않고 빨리 감는다 (최대 2분치 ≈ 1~2초)
@@ -305,6 +311,14 @@ async function boot() {
       const awake = e.ai !== 'patrol' && e.ai !== 'dead' && e.ai !== 'suspicious';
       if (awake) return { name: BOSS_NAME[e.kind] ?? '', hp: e.hp, max: BOSS_MAX[e.kind] ?? e.hp, awake };
     }
+    // 방어전: 남은 물결을 막대로
+    const d = sim.defense;
+    const of = sim.level.defense?.waves.length ?? 0;
+    if (defenseActive(sim)) {
+      const left = sim.enemies.filter((e) => e.id >= d.firstId && e.ai !== 'dead').length + (sim.horde?.agents.length ?? 0);
+      const name = d.state === 'wave' ? `방어전 — 물결 ${d.wave + 1}/${of} · 남은 적 ${left}` : `방어전 — 다음 물결 ${d.wave + 1}/${of}`;
+      return { name, hp: of - d.wave, max: of, awake: true };
+    }
     return null;
   };
   applySettings(settings);
@@ -428,7 +442,7 @@ async function boot() {
       if (ev.type === 'rest') {
         const saved = saveNow();
         hud.toast(`${ev.first ? '화로가 타오른다' : '불 곁에서 쉬었다'}${saved ? ' · 저장됨' : ''}`, 1.6);
-      } else if (ev.type === 'door') hud.toast(sim.level.lampDoors?.includes(ev.door) ? '북문이 열린다' : '두린의 문이 열린다', 1.8);
+      } else if (ev.type === 'door') hud.toast(sim.level.lampDoors?.includes(ev.door) || sim.level.defense?.doors.includes(ev.door) ? '쇠문이 열린다' : '두린의 문이 열린다', 1.8);
       else if (ev.type === 'lamp') hud.toast(ev.allLit ? '세 등불이 모두 타오른다' : `등불이 타오른다 (${sim.lamps.filter((l) => l.lit).length}/${sim.lamps.length})`, 1.8);
       if (ev.type === 'levelUp' || ev.type === 'skill') skillPanel.refresh();
       if (ev.type === 'gear' || ev.type === 'pickup') gearPanel.refresh();
@@ -445,7 +459,7 @@ async function boot() {
       else if (ev.type === 'exit') {
         if (ev.to === 'end') {
           saveNow();
-          start.innerHTML = `여기까지가 지금의 모리아다<small>21번째 홀의 북문 너머 — 마자르불의 방은 아직 어둠 속에 있다.<br>레벨 ${sim.player.level} · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>`;
+          start.innerHTML = `여기까지가 지금의 모리아다<small>마자르불의 방 너머 — 대장간과 깊은 탄갱은 아직 어둠 속에 있다.<br>레벨 ${sim.player.level} · 책 조각 ${pagesAll.size}/${PAGE_COUNT} · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>`;
           start.style.display = 'grid';
           document.exitPointerLock?.();
         } else {
@@ -457,6 +471,16 @@ async function boot() {
         }
       }
       else if (ev.type === 'pillar') gs.breakPillar(ev.solid);
+      else if (ev.type === 'page') {
+        pagesAll.add(ev.id);
+        const saved = saveNow();
+        hud.page(`마자르불의 책 — 조각 ${pagesAll.size}/${PAGE_COUNT}${saved ? ' · 저장됨' : ''}`, PAGE_TEXTS[ev.id] ?? '…');
+      } else if (ev.type === 'defense') {
+        if (ev.stage === 'start') hud.toast('책을 펼치자 굴마다 북이 울린다 — 방을 지켜라!', 3);
+        else if (ev.stage === 'wave') hud.toast(`물결 ${ev.wave + 1}/${ev.of} — 양쪽 굴에서 몰려온다`, 2.2);
+        else if (ev.stage === 'clear') hud.toast(`물결을 막았다 (${ev.wave}/${ev.of}) — 숨을 고른다`, 2.4);
+        else hud.toast(`마자르불의 방을 지켜 냈다${saveNow() ? ' · 저장됨' : ''}`, 3);
+      } else if (ev.type === 'guardBreak') hud.toast('방패를 깼다!', 0.8);
       else if (ev.type === 'companion') {
         hud.toast(`${ev.who}: ${ev.line}`, 1.6);
         shake = Math.max(shake, 0.25);

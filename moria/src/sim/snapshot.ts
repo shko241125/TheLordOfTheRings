@@ -59,6 +59,8 @@ export function takeSnapshot(sim: Sim): SimSnapshot {
     loot: sim.loot,
     nextLootId: sim.nextLootId,
     nextItemId: sim.nextItemId,
+    defense: sim.defense,
+    pages: sim.pages.map((x) => x.taken),
   };
   return { world: sim.world.takeSnapshot(), state: JSON.stringify(state, replacer) };
 }
@@ -82,6 +84,8 @@ const parse = (s: string) => JSON.parse(s, reviver) as {
   loot: Sim['loot'];
   nextLootId: number;
   nextItemId: number;
+  defense?: Sim['defense'];
+  pages?: boolean[];
 };
 
 /**
@@ -137,6 +141,8 @@ export function restoreSim(level: Level, seed: number, classId: ClassId, snap: S
   sim.loot = st.loot ?? [];
   sim.nextLootId = st.nextLootId ?? 0;
   sim.nextItemId = st.nextItemId ?? 0;
+  if (st.defense) sim.defense = st.defense;
+  st.pages?.forEach((t, i) => (sim.pages[i]!.taken = t));
   sim.navBlock.excluded.clear();
   for (const r of st.navBlock) sim.navBlock.excluded.add(r);
   return sim;

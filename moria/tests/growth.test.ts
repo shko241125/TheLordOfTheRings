@@ -132,15 +132,19 @@ describe('성장', () => {
     [s, b].forEach(disposeSim);
   });
 
-  it('저장 v1·v2·v3 → v4 (구역 1, 성장·장비 기본값), 손상된 장비는 거른다', () => {
+  it('저장 v1·v2·v3·v4 → v5 (구역 1, 성장·장비·책 조각 기본값), 손상된 장비는 거른다', () => {
     const p1 = { doorsOpen: [0], lit: [1], checkpoint: 1 };
     const want = {
-      v: 4, classId: 'dwarf', zone: 'zone1', entry: null, progress: { zone1: { ...p1, bossesDown: [], lampsLit: [] } }, growth: { level: 1, xp: 0, points: 0, skills: [] },
+      v: 5, classId: 'dwarf', zone: 'zone1', entry: null, progress: { zone1: { ...p1, bossesDown: [], lampsLit: [] } }, growth: { level: 1, xp: 0, points: 0, skills: [] },
       gear: { inventory: [], equipped: [null, null, null, null, null, null], gold: 0, mithril: 0 },
+      pages: [],
     };
     expect(migrate({ v: 1, classId: 'dwarf', progress: p1 })).toEqual(want);
     expect(migrate({ v: 2, classId: 'dwarf', progress: { ...p1, bossesDown: [] } })).toEqual(want);
     expect(migrate({ v: 3, classId: 'dwarf', zone: 'zone9', entry: null, progress: {}, growth: want.growth })).toBeNull();
+    const { pages: _p, ...v4 } = want;
+    expect(migrate({ ...v4, v: 4 })).toEqual(want);
+    expect(migrate({ ...want, pages: ['x'] })).toBeNull();
     // 손상된 장비 (등급 9)는 버린다
     expect(migrate({ ...want, gear: { ...want.gear, inventory: [{ id: 1, slot: 'weapon', grade: 9, name: 'x', affixes: [], legendary: -1, upgrade: 0 }] } })).toBeNull();
   });

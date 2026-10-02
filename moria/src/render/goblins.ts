@@ -8,6 +8,7 @@ import { angleDiff, angleToRad } from '../core/trig';
 import { GOBLIN_ATTACK } from '../sim/combat';
 import { GOBLIN_CAPSULE } from '../sim/enemy';
 import { CAPTAIN_CAPSULE, CAPTAIN_COMBO, CHARGE_WINDUP } from '../sim/captain';
+import { URUK_ATTACK, URUK_CAPSULE } from '../sim/uruk';
 import type { Enemy, Sim } from '../sim/types';
 import { analyzeLoco, findBone, findImpact, loadGltf, makeSocket } from './character';
 import { warpAttack } from './actionTime';
@@ -81,6 +82,9 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
   const stripMat = new MeshBasicMaterial({ color: 0xff3a10, transparent: true, opacity: 0, depthWrite: false });
   const bladeMat = new MeshStandardMaterial({ color: 0x6c6760, roughness: 0.6, metalness: 0.6 });
   const gripMat = new MeshStandardMaterial({ color: 0x2a1d12, roughness: 1 });
+  // 우루크 방패: 검은 쇠 판 (왼팔)
+  const shieldGeo = new BoxGeometry(0.06, 0.7, 0.5);
+  const shieldMat = new MeshStandardMaterial({ color: 0x24221f, roughness: 0.5, metalness: 0.7 });
 
   let scale = 1;
   let walkNoSlip = 0.75;
@@ -102,7 +106,8 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
       const skin = m.material.name === 'M_Main';
       // 올리브색(0x4d5a3a)은 주황 횃불빛 아래서 노랗게 보였다(스크린샷) → 더 짙고 채도 높은 녹색
       // 대장: 짙은 피부 + 붉은 천 / 궁수: 조금 밝은 피부 + 가죽
-      const color = e.kind === 'captain' ? (skin ? 0x2a3320 : 0x3a100c) : e.kind === 'archer' ? (skin ? 0x34502b : 0x2e2418) : skin ? 0x2c4526 : 0x221a12;
+      // 우루크: 검은 피부 + 쇠 갑옷
+      const color = e.kind === 'uruk' ? (skin ? 0x1c201b : 0x2b2a28) : e.kind === 'captain' ? (skin ? 0x2a3320 : 0x3a100c) : e.kind === 'archer' ? (skin ? 0x34502b : 0x2e2418) : skin ? 0x2c4526 : 0x221a12;
       const mat = new MeshStandardMaterial({ color, roughness: 0.85, emissive: new Color(0, 0, 0) });
       mats.push(mat);
       m.material = mat;
@@ -124,8 +129,11 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
       scale = HEIGHT / (box.max.y - box.min.y);
     }
     // 대장은 키 2.0m (고블린 1.4m의 1.43배), 어깨도 넓게
-    const k = e.kind === 'captain' ? (2 * (CAPTAIN_CAPSULE.half + CAPTAIN_CAPSULE.radius)) / HEIGHT : 1;
-    model.scale.set(scale * k * (e.kind === 'captain' ? 1.15 : 1.08), scale * k, scale * k * (e.kind === 'captain' ? 1.15 : 1.08));
+    // 우루크는 키 1.86m, 대장만큼 어깨가 넓다
+    const big = e.kind === 'captain' ? CAPTAIN_CAPSULE : e.kind === 'uruk' ? URUK_CAPSULE : null;
+    const k = big ? (2 * (big.half + big.radius)) / HEIGHT : 1;
+    const wide = big ? 1.15 : 1.08;
+    model.scale.set(scale * k * wide, scale * k, scale * k * wide);
     pivot.rotation.x = 0.14;
     root.updateMatrixWorld(true);
 
@@ -157,7 +165,13 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
       const grip = new Mesh(geos[2], gripMat);
       weapon.add(blade, grip);
       if (e.kind === 'captain') weapon.scale.setScalar(1.7); // 큰 칼
+      if (e.kind === 'uruk') weapon.scale.setScalar(1.3);
       hand.add(weapon);
+      if (e.kind === 'uruk') {
+        const shield = new Mesh(shieldGeo, shieldMat);
+        shield.position.set(0.08, 0.02, 0);
+        makeSocket({ root }, findBone(model, 'DEF-forearm.L')).add(shield);
+      }
     }
     idle.stop();
 
@@ -188,7 +202,7 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
     parent.add(root);
     const t = e.body.translation();
     const snap = { x: t.x, y: t.y, z: t.z, f: e.facing };
-    const cap = e.kind === 'captain' ? CAPTAIN_CAPSULE : GOBLIN_CAPSULE;
+    const cap = e.kind === 'captain' ? CAPTAIN_CAPSULE : e.kind === 'uruk' ? URUK_CAPSULE : GOBLIN_CAPSULE;
     let strip: Mesh | null = null;
     if (e.kind === 'captain') {
       strip = new Mesh(stripGeo, stripMat.clone());
@@ -319,7 +333,7 @@ export async function createGoblins(sim: Sim, parent: Object3D) {
           else target.idle = 1;
         } else if (e.ai === 'attack' && e.swingTick >= 0) {
           target.attack = 1;
-          const def = e.kind === 'captain' ? CAPTAIN_COMBO[e.step] ?? GOBLIN_ATTACK : GOBLIN_ATTACK;
+          const def = e.kind === 'captain' ? CAPTAIN_COMBO[e.step] ?? GOBLIN_ATTACK : e.kind === 'uruk' ? URUK_ATTACK : GOBLIN_ATTACK;
           g.acts.attack.time = Math.min(warpAttack(e.swingTick + alpha, def, { clip: clips.attack, impact }), clips.attack.duration - 1e-3);
         } else if (speed < 0.2) target.idle = 1;
         else if (speed < 2.2) {
