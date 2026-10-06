@@ -109,9 +109,10 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
   const breakableSet = new Set(level.breakable ?? []);
   const breakMeshes = new Map<number, Mesh>();
   for (const [si, s] of level.solids.entries()) {
-    if (breakableSet.has(si) && s.kind === 'cylinder') {
-      // 부서지는 기둥은 합치지 않는다 (따로 숨겨야 한다)
-      const m = new Mesh(track(new CylinderGeometry(s.radius, s.radius, s.halfHeight * 2, 24)), mat(s.surface));
+    if (breakableSet.has(si)) {
+      // 부서지는 기둥·다리 토막은 합치지 않는다 (따로 숨겨야 한다)
+      const g = s.kind === 'box' ? new BoxGeometry(s.half[0] * 2, s.half[1] * 2, s.half[2] * 2) : new CylinderGeometry(s.radius, s.radius, s.halfHeight * 2, 24);
+      const m = new Mesh(track(g), mat(s.surface));
       m.position.set(s.pos[0], s.pos[1], s.pos[2]);
       m.castShadow = m.receiveShadow = true;
       roomGroups[Math.max(0, roomOf(s.pos[0], s.pos[1], s.pos[2]))]!.add(m);
@@ -411,7 +412,17 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
       if (!m || !m.visible) return;
       m.visible = false;
       const s = level.solids[solid]!;
-      if (s.kind !== 'cylinder') return;
+      if (s.kind === 'box') {
+        // 다리 토막: 돌덩이로 쪼개져 심연으로 떨어진다 (바닥 없음 — 8초 뒤 지운다)
+        for (let i = 0; i < 18; i++) {
+          const c = new Mesh(chunkGeo, mat('stone'));
+          c.position.set(s.pos[0] + (fx.next() * 2 - 1) * s.half[0], s.pos[1], s.pos[2] + (fx.next() * 2 - 1) * s.half[2]);
+          c.scale.setScalar(0.8 + fx.next() * 1.4);
+          m.parent!.add(c);
+          debris.push({ m: c, vx: (fx.next() - 0.5) * 1.5, vy: fx.next() * 1.5, vz: (fx.next() - 0.5) * 1.5, floor: -1e4, spin: fx.next() * 6 - 3, life: 8 });
+        }
+        return;
+      }
       const base = s.pos[1] - s.halfHeight;
       for (let i = 0; i < 14; i++) {
         const c = new Mesh(chunkGeo, mat('stone'));

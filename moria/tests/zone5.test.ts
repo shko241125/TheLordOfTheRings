@@ -172,12 +172,26 @@ describe('발로그', () => {
     expect(b.hp).toBe(BALROG_HP * 0.1);
     expect(b.ai).not.toBe('dead');
     expect(s.events.some((e) => e.type === 'balrog' && e.stage === 'break')).toBe(true);
-    // 끝 장면 동안은 공격하지 않는다
+    // 끝 장면 동안은 공격하지 않는다. 플레이어가 끊길 자리(z −86) 이쪽에 있으면 다리를 건널 때까지 기다린다
     s.events.length = 0;
     run(s, idle(), FALL_TICKS + 2);
     expect(s.events.some((e) => e.type === 'playerHit')).toBe(false);
+    expect(b.ai).not.toBe('dead');
+    put(s, 0, 1.2, -95);
+    run(s, idle(), 3);
     expect(b.ai).toBe('dead');
     expect(s.events.some((e) => e.type === 'balrog' && e.stage === 'fall')).toBe(true);
+    // 다리 서쪽 토막이 무너졌다: 거기 서면 떨어진다
+    expect(s.events.some((e) => e.type === 'pillar')).toBe(true);
+    expect(s.pillars.every((x) => x.body === null)).toBe(true);
+    const t = createSim(ZONE5, 9);
+    restoreProgress(t, { doorsOpen: [], lit: [], checkpoint: -1, bossesDown: [0], lampsLit: [] }, 'south');
+    run(t, idle(), 2);
+    expect(t.pillars.every((x) => x.body === null)).toBe(true); // 이미 쓰러뜨린 저장 → 다리도 이미 없다
+    put(t, 0, 1.2, -81);
+    run(t, idle(), 120);
+    expect(t.player.action).toBe('dead');
+    disposeSim(t);
     put(s, 0, 1.2, -132);
     run(s, idle(), 3);
     expect(s.events.find((e) => e.type === 'exit')).toMatchObject({ to: 'end' });

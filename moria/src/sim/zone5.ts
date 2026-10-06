@@ -27,12 +27,14 @@ const solids: Solid[] = [
   ...room(EAST.min, EAST.max, [{ side: 's', c: 0, w: 3, y0: 0, y1: 5 }]),
   // 서쪽 단 (발로그가 선다): z −78..−70, 윗면 0
   { kind: 'box', pos: [0, -1, -74], half: [7, 1, 4], surface: 'stone' },
-  // 다리: 폭 2.4m, z −112..−78
-  { kind: 'box', pos: [0, -0.5, -95], half: [1.2, 0.5, 17], surface: 'stone' },
+  // 다리: 폭 2.4m, z −112..−84 (+ 무너지는 서쪽 토막 z −84..−78은 아래 BREAK)
+  { kind: 'box', pos: [0, -0.5, -98], half: [1.2, 0.5, 14], surface: 'stone' },
   // 동쪽 단: z −122..−112
   { kind: 'box', pos: [0, -1, -117], half: [6, 1, 5], surface: 'stone' },
   ...BRAZIERS.map(pedestal),
 ];
+// 간달프가 내리치면 무너지는 다리 서쪽 토막 (발로그가 서 있는 단과 다리 사이)
+const BREAK = solids.push({ kind: 'box', pos: [0, -0.5, -81], half: [1.2, 0.5, 3], surface: 'stone' }) - 1;
 
 const portals: Portal[] = [
   { a: 0, b: 1, min: [-2, 0, -0.5], max: [2, 5, 0.5] },
@@ -56,7 +58,8 @@ export const ZONE5: Level = {
   braziers: BRAZIERS,
   // 발로그: 추격이 끝날 때까지 보이지 않는 곳에 잠들어 있다가(아래 심연 밑) 서쪽 단에 나타난다
   bosses: [{ kind: 'balrog', pos: [0, -80, -40], name: '두린의 재앙' }],
-  chase: { triggerZ: -4, startZ: 6, speed: 5.0, safeZ: -80, stopZ: -69, bossAt: [0, 3.25, -73.5], halfWidth: 8 },
+  chase: { triggerZ: -4, startZ: 6, speed: 5.0, safeZ: -80, stopZ: -69, bossAt: [0, 3.25, -73.5], halfWidth: 8, breaks: [BREAK], crossZ: -86 },
+  breakable: [BREAK],
   // 다리 아래 불의 심연: 떨어지면 끝
   lava: [{ min: [-16, -36, -122], max: [16, -26, -70] }],
   pages: [{ id: 5, pos: [5, 0, -2] }],

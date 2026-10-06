@@ -69,7 +69,11 @@ export type Level = {
    * 불길 추격 (구역 5 — 발로그전 1페이즈): 플레이어가 triggerZ를 넘으면 불의 벽이 startZ에서 −Z로 speed(m/s)로 다가온다.
    * 벽에 닿으면 탄다. 플레이어가 safeZ를 넘으면 벽은 멈추고, 첫 보스가 bossAt에 나타난다
    */
-  chase?: { triggerZ: number; startZ: number; speed: number; safeZ: number; stopZ: number; bossAt: Vec3; halfWidth: number };
+  chase?: {
+    triggerZ: number; startZ: number; speed: number; safeZ: number; stopZ: number; bossAt: Vec3; halfWidth: number;
+    /** 끝 장면에 무너지는 다리 토막 (solids 번호 — breakable에도 넣는다)과, 플레이어가 그 너머(z < crossZ)로 건너야 무너진다 */
+    breaks: readonly number[]; crossZ: number;
+  };
   /** NPC (계획서 8장 — 상인·대장장이). 대화(E)는 상점 창을 연다. 대장장이는 모루가 타오른 뒤에만 일한다 */
   npcs?: readonly { kind: 'merchant' | 'smith'; name: string; pos: Vec3; facing: number }[];
   /** 마자르불의 책 조각 (바닥 높이). id는 게임 전체에서 고유 (0..11) */

@@ -59,7 +59,8 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
         ? RAPIER.ColliderDesc.cuboid(s.half[0], s.half[1], s.half[2])
         : RAPIER.ColliderDesc.cylinder(s.halfHeight, s.radius);
     world.createCollider(col.setCollisionGroups(groups(G_LEVEL, 0xffff)), body);
-    if (breakable.has(i) && s.kind === 'cylinder') pillars.push({ solid: i, x: s.pos[0], z: s.pos[2], r: s.radius, body });
+    // 부서지는 도형: 트롤이 부수는 기둥(원기둥), 무너지는 다리 토막(상자 — 구역 5)
+    if (breakable.has(i)) pillars.push({ solid: i, x: s.pos[0], z: s.pos[2], r: s.kind === 'cylinder' ? s.radius : Math.max(s.half[0], s.half[2]), body });
   }
 
   // 문: 레벨 바디 다음 순서

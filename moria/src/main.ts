@@ -544,7 +544,7 @@ async function boot() {
       } else if (ev.type === 'guardBreak') hud.toast('방패를 깼다!', 0.8);
       else if (ev.type === 'chase') hud.toast(ev.stage === 'start' ? '뒤에서 불길이 몰려온다 — 다리까지 달려라!' : '다리다!', ev.stage === 'start' ? 2.6 : 1.2);
       else if (ev.type === 'balrog') {
-        const line = { wake: '불길 속에서 두린의 재앙이 걸어 나온다', phase3: '발로그가 불의 채찍을 꺼낸다', exposed: '칼이 다리에 박혔다 — 가슴을 쳐라!', break: '간달프가 지팡이로 다리를 내리친다 — 다리가 갈라진다!', fall: '발로그가 불의 심연으로 떨어진다' }[ev.stage];
+        const line = { wake: '불길 속에서 두린의 재앙이 걸어 나온다', phase3: '발로그가 불의 채찍을 꺼낸다', exposed: '칼이 다리에 박혔다 — 가슴을 쳐라!', break: '간달프가 외친다 — 다리를 건너라!', fall: '간달프의 지팡이가 다리를 내리친다 — 다리가 무너지고, 발로그가 불의 심연으로 떨어진다' }[ev.stage];
         hud.toast(line, ev.stage === 'exposed' ? 1.2 : 3);
         if (ev.stage === 'break' || ev.stage === 'fall') shake = Math.max(shake, 0.7);
       } else if (ev.type === 'swing' && (ev.attack === 'windL' || ev.attack === 'windR')) hud.toast('날개가 들린다 — 웅크려(C) 버텨라!', 1.2);
@@ -561,7 +561,9 @@ async function boot() {
       }
       else if (ev.type === 'death' && sim.bosses.includes(ev.enemy)) {
         const saved = saveNow(); // 보스 처치는 바로 저장
-        hud.toast(`${bossName(ev.enemy)}을 쓰러뜨렸다${saved ? ' · 저장됨' : ''}`, 3);
+        // 발로그는 쓰러뜨리는 것이 아니다 (간달프와 함께 심연으로 떨어진다 — 원작 감각)
+        const balrog = sim.enemies.find((e) => e.id === ev.enemy)?.kind === 'balrog';
+        hud.toast(`${bossName(ev.enemy)}${balrog ? '이 심연으로 사라졌다' : '을 쓰러뜨렸다'}${saved ? ' · 저장됨' : ''}`, 3);
       } else if (ev.type === 'whistle') hud.toast('대장이 휘파람을 분다 — 무리가 몰려온다!', 2.2);
       if (ev.type === 'slam') {
         const t = sim.player.body.translation();

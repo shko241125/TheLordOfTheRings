@@ -106,8 +106,11 @@ export function stepBalrog(sim: Sim, e: Enemy) {
   const d = Math.sqrt(dx * dx + dz * dz);
 
   if (e.used & ENDING) {
-    // 간달프가 다리를 부순다 → 떨어진다
-    if (e.aiTick >= FALL_TICKS) {
+    // 간달프가 다리를 부순다 → 떨어진다. 플레이어가 아직 끊길 자리 이쪽(서쪽)에 있으면 건널 때까지 기다린다
+    // (먼저 무너지면 동문으로 가는 길이 끊겨 갇힌다)
+    const crossZ = sim.level.chase?.crossZ ?? Infinity;
+    if (e.aiTick >= FALL_TICKS && pt.z < crossZ) {
+      breakBridge(sim, false);
       e.hp = 0;
       setAI(e, 'dead');
       e.collider.setCollisionGroups(groups(0, 0));
@@ -228,6 +231,17 @@ export function stepBalrog(sim: Sim, e: Enemy) {
   }
 }
 
+/** 다리 토막이 무너진다 (발로그가 떨어질 때, 또는 이미 쓰러뜨린 저장에서 되살릴 때 조용히) */
+export function breakBridge(sim: Sim, silent: boolean) {
+  for (const solid of sim.level.chase?.breaks ?? []) {
+    const pl = sim.pillars.find((x) => x.solid === solid);
+    if (!pl?.body) continue;
+    sim.world.removeRigidBody(pl.body);
+    pl.body = null;
+    if (!silent) sim.events.push({ type: 'pillar', tick: sim.tick, solid, x: pl.x, z: pl.z });
+  }
+}
+
 /** 불길 추격 (1페이즈): 불의 벽이 다가온다. 다리 앞(safeZ)에 닿으면 발로그가 불 속에서 나온다 */
 export function stepChase(sim: Sim) {
   const c = sim.level.chase;
@@ -239,6 +253,7 @@ export function stepChase(sim: Sim) {
   if (st.state === 'idle') {
     if (!boss || boss.ai === 'dead') {
       st.state = 'done';
+      breakBridge(sim, true); // 이미 쓰러뜨렸다 → 다리도 이미 무너져 있다
       return;
     }
     if (pt.z < c.triggerZ && p.action !== 'dead') {
