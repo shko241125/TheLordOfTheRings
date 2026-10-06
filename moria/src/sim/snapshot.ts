@@ -96,8 +96,8 @@ const parse = (s: string) => JSON.parse(s, reviver) as {
  * 스냅샷에서 시뮬레이션을 되살린다. 같은 레벨·시드·종족으로 새 시뮬레이션을 만들어(내비메시·격자) 뼈대로 쓰고,
  * 월드를 스냅샷 월드로 바꾼 뒤 JS 상태를 덮는다. RAPIER.init() 뒤에만.
  */
-export function restoreSim(level: Level, seed: number, classId: ClassId, snap: SimSnapshot): Sim {
-  const sim = createSim(level, seed, classId);
+export function restoreSim(level: Level, seed: number, classId: ClassId, snap: SimSnapshot, nav?: import('navcat').NavMesh): Sim {
+  const sim = createSim(level, seed, classId, nav);
   const st: State = parse(snap.state);
   sim.world.free();
   const world = RAPIER.World.restoreSnapshot(snap.world);

@@ -1,3 +1,4 @@
+import type { NavMesh } from 'navcat';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three/webgpu';
 import { createAudio } from './audio/audio';
@@ -109,12 +110,28 @@ async function boot() {
   const rigId = param<RigId>('rig', ['ual', 'kaykit'], 'ual');
   const stats = CLASS_STATS[classId];
 
-  // 캐릭터 파일 받기를 먼저 시작한다 → 내비메시 굽기(구역 1 ≈ 0.5초, 메인 스레드)와 네트워크 대기가 겹친다
+  // 내비메시는 워커에서 굽는다 (구역 하나 0.2~0.8초 — 메인 스레드를 막지 않고 아래 준비와 겹친다).
+  // 워커를 못 쓰면(구형 브라우저·오류) undefined → createSim이 메인 스레드에서 굽는다
+  const navP = new Promise<NavMesh | undefined>((resolve) => {
+    try {
+      const w = new Worker(new URL('./navWorker.ts', import.meta.url), { type: 'module' });
+      w.onmessage = (e: MessageEvent<NavMesh>) => {
+        resolve(e.data);
+        w.terminate();
+      };
+      w.onerror = () => resolve(undefined);
+      w.postMessage(testRoom ? 'test' : zoneId);
+    } catch {
+      resolve(undefined);
+    }
+  });
+  // 캐릭터 파일 받기도 먼저 시작한다 → 내비메시 굽기·네트워크 대기·Rapier 준비가 겹친다
   const rigP = loadCharacter(classId, rigId);
   rigP.catch(() => {}); // 실패는 아래 await에서 boot().catch로 간다 (그 전의 미처리 거부 경고만 막는다)
   await RAPIER.init();
   const { renderer, backend } = await createRenderer(canvas, forceWebGL);
-  const sim = replay ? restoreSim(level, replay.header.seed, classId, replay.snapshot) : createSim(level, WORLD_SEED, classId);
+  const nav = await navP;
+  const sim = replay ? restoreSim(level, replay.header.seed, classId, replay.snapshot, nav) : createSim(level, WORLD_SEED, classId, nav);
   if (save) {
     const pr = save.progress[zoneId];
     restoreProgress(sim, pr ?? { doorsOpen: [], lit: [], checkpoint: -1, bossesDown: [], lampsLit: [] }, save.entry);

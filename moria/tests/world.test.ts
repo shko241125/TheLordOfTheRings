@@ -1,9 +1,10 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { restoreProgress } from '../src/sim/interact';
-import type { ZoneId } from '../src/sim/level';
-import { pathTo } from '../src/sim/nav';
-import { createSim, disposeSim, stepSim } from '../src/sim/sim';
+import type { Level, ZoneId } from '../src/sim/level';
+import { buildNavMesh, pathTo } from '../src/sim/nav';
+import { scriptedInputs } from '../src/sim/scripted';
+import { createSim, disposeSim, hashSim, stepSim } from '../src/sim/sim';
 import { ZONES } from '../src/sim/zones';
 
 /**
@@ -39,7 +40,7 @@ describe('세계 연결', () => {
     const order: string[] = ['zone1'];
     let cur: ZoneId = 'zone1';
     for (let i = 0; i < 10; i++) {
-      const fwd = (ZONES[cur].exits ?? []).find((x) => x.to === 'end' || !order.includes(x.to));
+      const fwd: NonNullable<Level['exits']>[number] | undefined = (ZONES[cur].exits ?? []).find((x) => x.to === 'end' || !order.includes(x.to));
       expect(fwd, cur).toBeDefined();
       if (fwd!.to === 'end') break;
       cur = fwd!.to;
@@ -71,6 +72,20 @@ describe('세계 연결', () => {
         expect(reach(z, level.spawn, c), `${z} exit → ${x.to}`).toBeLessThan(Math.max(1.5, (x.max[2] - x.min[2]) / 2 + 0.5));
       }
       for (const b of level.braziers ?? []) expect(reach(z, level.spawn, [b[0], b[1], b[2] + 1.2]), `${z} brazier`).toBeLessThan(1);
+    }
+  });
+
+  it('워커에서 구워 넘긴(구조화 복제한) 내비메시로 만든 시뮬레이션은 직접 구운 것과 해시가 같다', () => {
+    for (const z of ['zone1', 'zone2'] as const) {
+      const a = createSim(ZONES[z], 7);
+      const b = createSim(ZONES[z], 7, 'human', structuredClone(buildNavMesh(ZONES[z])));
+      const inputs = scriptedInputs(7, 600);
+      for (let i = 0; i < 600; i++) {
+        stepSim(a, inputs[i]!);
+        stepSim(b, inputs[i]!);
+        if (i % 100 === 99) expect(hashSim(b), `${z} @${i}`).toBe(hashSim(a));
+      }
+      [a, b].forEach(disposeSim);
     }
   });
 });

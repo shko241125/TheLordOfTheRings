@@ -84,7 +84,7 @@ Esc(일시정지) 화면의 ⚙ 설정: 화면 흔들림, 돌의 감각 음파 �
 ## 구조
 
 - `src/core` — 고정 60Hz 루프, 시드 난수, 결정적 삼각함수·atan2, 입력(키보드·마우스·게임패드)
-- `src/sim` — 결정적 시뮬레이션 (three.js·DOM 의존 없음, Node에서 실행 가능)
+- `src/sim` — 결정적 시뮬레이션 (three.js·DOM 의존 없음, Node에서 실행 가능). 브라우저는 내비메시를 `src/navWorker.ts`(웹 워커)에서 굽는다
   - `player.ts` 이동·행동(콤보·강공격·회피·패링·스태미나·입력 버퍼·락온), `combat.ts` 수치·판정
   - `enemy.ts` 고블린 AI(순찰→의심→추격→공전⇄공격, 공격 토큰 2), `perception.ts` 빛·소음 감지 필드
   - `torch.ts` 횃불 들기·내려놓기·던지기, `nav.ts` navcat 내비메시·경로, `move.ts` Rapier KCC 공용 이동

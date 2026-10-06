@@ -8,6 +8,7 @@ import { createEnemy, damageEnemy, enemyRadius, stepEnemies } from './enemy';
 import type { Level } from './level';
 import { makeController } from './move';
 import { buildNavMesh } from './nav';
+import type { NavMesh } from 'navcat';
 import { allLights, emitNoise, lightAt, pruneNoise } from './perception';
 import { stepPlayer } from './player';
 import { nearestInteractable, stepExits, stepInteract } from './interact';
@@ -37,8 +38,11 @@ export const NO_INPUT: InputFrame = { buttons: 0, moveX: 0, moveY: 0, yaw: 0 };
 const PLAYER_HP = 100;
 const MAX_EVENTS = 256;
 
-/** RAPIER.init()이 끝난 뒤에만 호출한다. */
-export function createSim(level: Level, seed: number, classId: ClassId = 'human'): Sim {
+/**
+ * RAPIER.init()이 끝난 뒤에만 호출한다.
+ * nav: 미리 구운 내비메시 (브라우저는 워커에서 구워 넘긴다 — 같은 함수의 결과를 구조화 복제한 것이라 똑같다). 없으면 여기서 굽는다
+ */
+export function createSim(level: Level, seed: number, classId: ClassId = 'human', baked?: NavMesh): Sim {
   const stats = CLASS_STATS[classId];
   const world = new RAPIER.World({ x: 0, y: -20, z: 0 });
   world.timestep = DT;
@@ -72,7 +76,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
     body,
   );
 
-  const nav = buildNavMesh(level);
+  const nav = baked ?? buildNavMesh(level);
   const sim: Sim = {
     level,
     tick: 0,
