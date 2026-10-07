@@ -41,6 +41,8 @@ import { createSkillPanel } from './render/skillPanel';
 import { createGearPanel } from './render/gearPanel';
 import { createShopPanel } from './render/shopPanel';
 import { createNpcView } from './render/npcs';
+import { createJournal } from './render/journal';
+import { mainStatus } from './quests';
 import { CMD_BOOK } from './sim/shop';
 import { createLootView } from './render/loot';
 import { GRADE_NAMES } from './sim/items';
@@ -265,12 +267,11 @@ async function boot() {
     // 쓰러지면 새로고침 → 저장(마지막 화로)에서 다시 시작
     if (e.code === 'KeyR' && sim.player.action === 'dead') location.reload();
     // Tab: 스킬 창, I: 장비 창 (일시정지 화면 안) — 마우스로 고르도록 포인터 잠금을 푼다
-    if (e.code === 'Tab' || e.code === 'KeyI') {
+    if (e.code === 'Tab' || e.code === 'KeyI' || e.code === 'KeyJ') {
       e.preventDefault();
-      const panel = e.code === 'Tab' ? skillPanel : gearPanel;
-      const other = e.code === 'Tab' ? gearPanel : skillPanel;
+      const panel = e.code === 'Tab' ? skillPanel : e.code === 'KeyI' ? gearPanel : journal;
       if (!panel.open) document.exitPointerLock?.();
-      other.close();
+      for (const other of [skillPanel, gearPanel, journal, shopPanel]) if (other !== panel) other.close();
       start.style.display = 'grid';
       panel.toggle();
     }
@@ -321,6 +322,7 @@ async function boot() {
     (cmd) => input.command(cmd),
   );
   const shopPanel = createShopPanel(start, sim, (cmd) => input.command(cmd));
+  const journal = createJournal(start, sim, () => pagesAll.size);
   /** NPC 곁에서 E: 상점 창 (일시정지 화면 안 — 마우스로 고른다) */
   const talk = () => {
     const t = nearestInteractable(sim);
@@ -716,6 +718,10 @@ async function boot() {
     // 점광원 조도 ∝ 세기/거리² 이므로 거리² 비율로 줄여 캐릭터가 받는 밝기를 일정하게 한다.
     gs.fill.intensity = FILL_INTENSITY * (follow.arm / follow.armMax) ** 2;
 
+    if (!testRoom) {
+      const g = mainStatus(sim);
+      hud.goal(g ? `목표 · ${g.quest.title}` : '', g ? g.text : '');
+    }
     hud.update(dt, sim, lockT ? (goblins.screenPos(lockT.id, follow.camera) ?? trolls.screenPos(lockT.id, follow.camera)) : null);
     const target = nearestInteractable(sim);
     hud.prompt(target, durin.isOpen || sim.player.action !== 'free' || !!replay);

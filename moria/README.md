@@ -26,6 +26,7 @@ npm run smoke        # 실제 브라우저 스모크: 개발 서버(새 게임 �
 | 동료 호출 (게이지 100%: 아라곤·김리·레골라스 광역기) | Q | LT + RT |
 | 스킬 창 (레벨업마다 포인트 1) | Tab | — (❚❚ 일시정지 화면의 ✦ 스킬) |
 | 장비 창 (장착·해제·버리기·강화) | I | — (❚❚ 일시정지 화면의 ⚔ 장비) |
+| 퀘스트 일지 (메인·사이드, 지금 단계) | J | — (❚❚ 일시정지 화면의 📜 일지) |
 | 다시 시작 (쓰러졌을 때 — 마지막으로 쉰 화로에서) | R | — |
 | 마지막 60초 보기 (쓰러졌을 때 — 마자르불의 책) | B | — |
 
@@ -34,6 +35,7 @@ Esc(일시정지) 화면의 ⚙ 설정: 화면 흔들림, 돌의 감각 음파 �
 
 ## 진행
 
+화면 왼쪽 위에 지금 목표가 한 줄로 뜬다(구역마다 메인 퀘스트 하나 — 일지 J에서 전체를 본다).
 서문 밖에서 시작한다. 문 앞에서 E → 비문의 수수께끼에 답하면 문이 열린다 (60초가 지나면 간달프가 힌트를 준다).
 화로에서 E로 쉬면 체력·예비 횃불이 차고 저장된다. 새로고침하면 마지막 화로에서 이어한다.
 
@@ -88,7 +90,7 @@ Esc(일시정지) 화면의 ⚙ 설정: 화면 흔들림, 돌의 감각 음파 �
   - `player.ts` 이동·행동(콤보·강공격·회피·패링·스태미나·입력 버퍼·락온), `combat.ts` 수치·판정
   - `enemy.ts` 고블린 AI(순찰→의심→추격→공전⇄공격, 공격 토큰 2), `perception.ts` 빛·소음 감지 필드
   - `torch.ts` 횃불 들기·내려놓기·던지기, `nav.ts` navcat 내비메시·경로, `move.ts` Rapier KCC 공용 이동
-  - `growth.ts` 레벨·XP·스킬 트리, `items.ts`·`gear.ts` 장비·전리품·강화, `archer.ts` 고블린 궁수·화살, `captain.ts` 고블린 대장, `zone2.ts` 21번째 홀, `zone3.ts` 마자르불의 방, `zone4.ts` 대장간, `forge.ts` 용암·발판·모루, `zone5.ts` 크하잣둠의 다리, `shop.ts` 상점·제작, `balrog.ts` 불길 추격·발로그, `defense.ts` 방어전, `uruk.ts` 우루크 방패, `zones.ts` 구역 목록, `build.ts` 방 빌더, `director.ts` 북소리 디렉터, `horde.ts` 고블린 물결(흐름장·승격/강등), `collapse.ts` 무너지는 기둥, `companion.ts` 동료 호출, `troll.ts` 동굴 트롤, `interact.ts` 문·화로·진행 상태, `zone1.ts` 구역 1 (방·통로·문·화로 데이터)
+  - `growth.ts` 레벨·XP·스킬 트리, `items.ts`·`gear.ts` 장비·전리품·강화, `archer.ts` 고블린 궁수·화살, `captain.ts` 고블린 대장, `zone2.ts` 21번째 홀, `zone3.ts` 마자르불의 방, `zone4.ts` 대장간, `forge.ts` 용암·발판·모루, `zone5.ts` 크하잣둠의 다리, `shop.ts` 상점·제작 (퀘스트 정의·진행 계산은 `src/quests.ts` — 시뮬레이션 밖), `balrog.ts` 불길 추격·발로그, `defense.ts` 방어전, `uruk.ts` 우루크 방패, `zones.ts` 구역 목록, `build.ts` 방 빌더, `director.ts` 북소리 디렉터, `horde.ts` 고블린 물결(흐름장·승격/강등), `collapse.ts` 무너지는 기둥, `companion.ts` 동료 호출, `troll.ts` 동굴 트롤, `interact.ts` 문·화로·진행 상태, `zone1.ts` 구역 1 (방·통로·문·화로 데이터)
 - `src/render` — 렌더러, 씬, 카메라(락온·흔들림), 캐릭터(`character.ts`), 애니메이션(`locomotion.ts` 이동+행동 레이어, `actionTime.ts` 타격 순간 맞춤), 복장(`props.ts`), 고블린(`goblins.ts`), HUD·미니맵(`hud.ts`), 두린의 문 창(`durin.ts`), 트롤 외형·예고 고리(`troll.ts`), 무리 VAT 인스턴싱(`horde.ts`), 품질 단계(`quality.ts`), 돌의 감각 후처리(`post.ts`)
   - 씬은 방마다 도형을 (재질, 그림자)별로 합치고, 통로가 시야에 걸리는 방만 그린다 (포털 컬링)
 - `src/save.ts` — 저장 (localStorage, 버전 검사), `src/core/riddle.ts` — 수수께끼 판정

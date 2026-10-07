@@ -27,6 +27,8 @@ export function createHud() {
     #boss { position: fixed; left: 50%; top: 22px; width: min(460px, 70vw); transform: translateX(-50%); pointer-events: none; display: none; font: 15px/1.4 serif; color: #e6d6b8; text-align: center; text-shadow: 0 0 5px #000; }
     #boss .bar { height: 9px; margin-top: 4px; background: rgba(0,0,0,.6); border: 1px solid rgba(203,189,158,.4); }
     #boss .bar > i { display: block; height: 100%; background: #8e2a1c; transition: width .12s linear; }
+    #goal { position: fixed; left: 16px; top: 60px; max-width: min(420px, 60vw); font: 14px/1.4 serif; color: #e6d6b8; text-shadow: 0 0 5px #000, 0 0 2px #000; pointer-events: none; }
+    #goal b { display: block; font: 600 11px/1.4 ui-monospace, monospace; color: #b8a888; letter-spacing: .05em; }
     #page { position: fixed; left: 50%; bottom: 30%; transform: translateX(-50%); max-width: min(560px, 88vw); padding: 12px 18px; background: rgba(30,22,12,.82); border: 1px solid rgba(203,189,158,.45); font: italic 16px/1.6 serif; color: #e6d6b8; pointer-events: none; opacity: 0; transition: opacity .4s; }
     #page b { display: block; font: 600 13px/1.4 serif; font-style: normal; color: #cbbd9e; margin-bottom: 4px; }
     #minimap { position: fixed; right: 16px; top: 16px; pointer-events: none; opacity: .85; }
@@ -45,7 +47,9 @@ export function createHud() {
   const boss = Object.assign(document.createElement('div'), { id: 'boss' });
   boss.innerHTML = '<span></span><div class="bar"><i></i></div>';
   const page = Object.assign(document.createElement('div'), { id: 'page' });
-  document.body.append(root, lock, toast, dead, prompt, boss, page);
+  const goal = Object.assign(document.createElement('div'), { id: 'goal' });
+  document.body.append(root, lock, toast, dead, prompt, boss, page, goal);
+  let goalText = '';
   let pageUntil = 0;
   const hp = root.querySelector<HTMLElement>('#hp > i')!;
   const st = root.querySelector<HTMLElement>('#st > i')!;
@@ -57,6 +61,16 @@ export function createHud() {
   let clock = 0;
 
   return {
+    /** 지금 목표 한 줄 (메인 퀘스트의 지금 단계). 바뀔 때만 다시 쓴다 */
+    goal(title: string, text: string) {
+      const t = `${title}\n${text}`;
+      if (t === goalText) return;
+      goalText = t;
+      goal.innerHTML = '<b></b><span></span>';
+      goal.querySelector('b')!.textContent = title;
+      goal.querySelector('span')!.textContent = text;
+      goal.style.display = text ? 'block' : 'none';
+    },
     /** 마자르불의 책 조각 한 장 (몇 초 보였다 사라진다) */
     page(title: string, text: string, seconds = 9) {
       page.innerHTML = '<b></b><span></span>';
