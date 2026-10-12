@@ -40,7 +40,7 @@ import { createSettingsPanel } from './render/settingsPanel';
 import { createSkillPanel } from './render/skillPanel';
 import { createGearPanel } from './render/gearPanel';
 import { createShopPanel } from './render/shopPanel';
-import { createNpcView } from './render/npcs';
+import { createEscortView, createNpcView } from './render/npcs';
 import { createJournal } from './render/journal';
 import { mainStatus } from './quests';
 import { CMD_BOOK } from './sim/shop';
@@ -143,7 +143,7 @@ async function boot() {
   }
   /** 주운 책 조각 (모든 구역) */
   const pagesAll = new Set(save?.pages ?? []);
-  const growthOf = () => ({ level: sim.player.level, xp: sim.player.xp, points: sim.player.points, skills: [...sim.player.skills] });
+  const growthOf = () => ({ level: sim.player.level, xp: sim.player.xp, points: sim.player.points, skills: [...sim.player.skills], ...(sim.player.perks.length ? { perks: [...sim.player.perks] } : {}) });
   const gearOf = () => ({ inventory: sim.player.inventory, equipped: sim.player.equipped, gold: sim.player.gold, mithril: sim.player.mithril });
   /** 저장: 이 구역 진행 상태 + 성장. 구역을 옮길 때는 옮겨 갈 구역·입구를 준다 */
   const saveNow = (zone: ZoneId = zoneId, entry: string | null = save?.entry ?? null) => {
@@ -176,6 +176,7 @@ async function boot() {
   const arrowView = createArrowView(sim, gs.scene);
   const balrogView = createBalrogView(sim, gs.scene, backend);
   createNpcView(level, gs.scene, backend);
+  const escortView = createEscortView(sim, gs.scene);
   const lootView = createLootView(sim, gs.scene);
   const trolls = await createTrolls(sim, gs.scene, rigId === 'ual' ? { slam: rig.actions.heavy, sweep: rig.actions.light3 } : null);
   const hud = createHud();
@@ -544,7 +545,11 @@ async function boot() {
         else if (ev.stage === 'clear') hud.toast(`물결을 막았다 (${ev.wave}/${ev.of}) — 숨을 고른다`, 2.4);
         else hud.toast(`마자르불의 방을 지켜 냈다${saveNow() ? ' · 저장됨' : ''}`, 3);
       } else if (ev.type === 'guardBreak') hud.toast('방패를 깼다!', 0.8);
-      else if (ev.type === 'chase') hud.toast(ev.stage === 'start' ? '뒤에서 불길이 몰려온다 — 다리까지 달려라!' : '다리다!', ev.stage === 'start' ? 2.6 : 1.2);
+      else if (ev.type === 'escort') {
+        const name = sim.level.escort?.name ?? '광부';
+        const line = { follow: `${name}: "따라가겠소 — 동쪽 층계의 화로까지만 데려다주시오"`, hurt: `${name}이 다친다 — 적에게서 떼어 놓아라 (체력 ${Math.round(sim.escort.hp)})`, saved: `${name}을 구했다 — 미스릴 4 · 금화 60 · 동료 게이지 +25%${saveNow() ? ' · 저장됨' : ''}`, dead: `${name}이 쓰러졌다… (화로에서 이어하면 다시)` }[ev.stage];
+        hud.toast(line, ev.stage === 'hurt' ? 1.6 : 3);
+      } else if (ev.type === 'chase') hud.toast(ev.stage === 'start' ? '뒤에서 불길이 몰려온다 — 다리까지 달려라!' : '다리다!', ev.stage === 'start' ? 2.6 : 1.2);
       else if (ev.type === 'balrog') {
         const line = { wake: '불길 속에서 두린의 재앙이 걸어 나온다', phase3: '발로그가 불의 채찍을 꺼낸다', exposed: '칼이 다리에 박혔다 — 가슴을 쳐라!', break: '간달프가 외친다 — 다리를 건너라!', fall: '간달프의 지팡이가 다리를 내리친다 — 다리가 무너지고, 발로그가 불의 심연으로 떨어진다' }[ev.stage];
         hud.toast(line, ev.stage === 'exposed' ? 1.2 : 3);
@@ -682,6 +687,7 @@ async function boot() {
     collapseView.update(animDt);
     arrowView.update();
     balrogView.update(animDt);
+    escortView.update(animDt);
     lootView.update(animDt);
     hud.boss(bossBar()); // 방 가시성은 지난 프레임 cull 결과 (1프레임 지연)
 

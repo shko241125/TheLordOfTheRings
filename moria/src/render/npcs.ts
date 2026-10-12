@@ -53,3 +53,44 @@ export function createNpcView(level: Level, parent: Object3D, backend: Backend) 
     parent.add(g);
   }
 }
+
+/** 호위 대상 (광부): NPC와 같은 드워프 도형 + 곡괭이. 시뮬레이션의 점을 따라 걷고, 다치면 붉게 깜빡인다 */
+export function createEscortView(sim: import('../sim/types').Sim, parent: Object3D) {
+  if (!sim.level.escort) return { update() {} };
+  const robe = new MeshStandardMaterial({ color: 0x4a4038, roughness: 0.95, emissive: 0x000000 });
+  const skin = new MeshStandardMaterial({ color: 0x8a6a52, roughness: 0.8 });
+  const g = new Group();
+  const body = new Mesh(new CylinderGeometry(0.34, 0.48, 0.95, 12), robe);
+  body.position.y = 0.48;
+  const head = new Mesh(new SphereGeometry(0.19, 12, 8), skin);
+  head.position.y = 1.15;
+  const helm = new Mesh(new SphereGeometry(0.21, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), new MeshStandardMaterial({ color: 0x5a5048, metalness: 0.5, roughness: 0.6 }));
+  helm.position.y = 1.2;
+  const beard = new Mesh(new ConeGeometry(0.16, 0.45, 8), new MeshStandardMaterial({ color: 0x9a8a70, roughness: 1 }));
+  beard.position.set(0, 0.9, -0.13);
+  beard.rotation.x = Math.PI;
+  const pick = new Mesh(new CylinderGeometry(0.025, 0.025, 0.8, 6), skin);
+  pick.position.set(0.3, 0.9, 0.15);
+  pick.rotation.z = -0.6;
+  g.add(body, head, helm, beard, pick);
+  g.traverse((o) => (o.castShadow = true));
+  parent.add(g);
+  let px = sim.escort.x, pz = sim.escort.z, lastHp = sim.escort.hp, flash = 0;
+  return {
+    update(dt: number) {
+      const e = sim.escort;
+      g.visible = e.state !== 'dead';
+      const mx = e.x - px, mz = e.z - pz;
+      if (mx * mx + mz * mz > 1e-6) g.rotation.y = Math.atan2(-mx, -mz); // 걷는 쪽을 본다 (앞 = −Z)
+      px = e.x;
+      pz = e.z;
+      // 걸을 때 살짝 흔들린다
+      const moving = mx * mx + mz * mz > 1e-5;
+      g.position.set(e.x, e.y + (moving ? Math.abs(Math.sin(performance.now() / 120)) * 0.05 : 0), e.z);
+      if (e.hp < lastHp) flash = 0.25;
+      lastHp = e.hp;
+      flash = Math.max(0, flash - dt);
+      robe.emissive.setRGB(flash > 0 ? 0.6 : 0, 0, 0);
+    },
+  };
+}

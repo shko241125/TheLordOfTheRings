@@ -124,7 +124,7 @@ export const TREES: Record<ClassId, Tree> = {
 /** 배율은 곱하고 나머지는 더한다 */
 const MULT: ReadonlySet<keyof Mods> = new Set(['dmg', 'heavy', 'stamina', 'ally']);
 
-export function computeMods(classId: ClassId, level: number, skills: readonly number[], gear: readonly (Item | null)[] = []): Mods {
+export function computeMods(classId: ClassId, level: number, skills: readonly number[], gear: readonly (Item | null)[] = [], perks: readonly string[] = []): Mods {
   const m: Mods = { ...BASE_MODS, dmg: 1 + DMG_PER_LEVEL * (level - 1) };
   const nodes = TREES[classId].nodes;
   for (const i of skills) {
@@ -137,6 +137,8 @@ export function computeMods(classId: ClassId, level: number, skills: readonly nu
     if (!it) continue;
     for (const mods of itemMods(it)) for (const [k, v] of Object.entries(mods) as [keyof Mods, number][]) m[k] = MULT.has(k) ? m[k] * v : m[k] + v;
   }
+  // 사이드 퀘스트 영구 보상
+  if (perks.includes('miner')) m.ally *= 1.25;
   return m;
 }
 
@@ -154,7 +156,7 @@ export function canLearn(classId: ClassId, skills: readonly number[], points: nu
 export function refreshMods(sim: Sim) {
   const p = sim.player;
   const before = p.maxHp;
-  p.mods = computeMods(sim.classId, p.level, p.skills, p.equipped);
+  p.mods = computeMods(sim.classId, p.level, p.skills, p.equipped, p.perks);
   p.maxHp = maxHpFor(p.level, p.mods);
   // 최대 체력이 늘면 그만큼 채운다 (줄면 넘치는 만큼 깎는다)
   p.hp = Math.max(1, Math.min(p.maxHp, p.hp + (p.maxHp - before)));
@@ -211,13 +213,14 @@ export function restoreGear(sim: Sim, g: { inventory: Item[]; equipped: (Item | 
 }
 
 /** 저장에서 복원 (첫 틱 전) */
-export function restoreGrowth(sim: Sim, g: { level: number; xp: number; points: number; skills: number[] }) {
+export function restoreGrowth(sim: Sim, g: { level: number; xp: number; points: number; skills: number[]; perks?: string[] }) {
   const p = sim.player;
   p.level = Math.max(1, Math.min(MAX_LEVEL, Math.floor(g.level)));
   p.xp = Math.max(0, Math.floor(g.xp));
   p.skills = g.skills.filter((i, k, a) => Number.isInteger(i) && TREES[sim.classId].nodes[i] && a.indexOf(i) === k);
   p.points = Math.max(0, Math.floor(g.points));
-  p.mods = computeMods(sim.classId, p.level, p.skills, p.equipped);
+  p.perks = (g.perks ?? []).filter((x) => x === 'miner');
+  p.mods = computeMods(sim.classId, p.level, p.skills, p.equipped, p.perks);
   p.maxHp = maxHpFor(p.level, p.mods);
   p.hp = p.maxHp;
 }

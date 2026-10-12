@@ -62,6 +62,7 @@ export function takeSnapshot(sim: Sim): SimSnapshot {
     defense: sim.defense,
     forge: sim.forge,
     chase: sim.chase,
+    escort: sim.escort,
     pages: sim.pages.map((x) => x.taken),
   };
   return { world: sim.world.takeSnapshot(), state: JSON.stringify(state, replacer) };
@@ -89,6 +90,7 @@ const parse = (s: string) => JSON.parse(s, reviver) as {
   defense?: Sim['defense'];
   forge?: Sim['forge'];
   chase?: Sim['chase'];
+  escort?: Sim['escort'];
   pages?: boolean[];
 };
 
@@ -148,6 +150,7 @@ export function restoreSim(level: Level, seed: number, classId: ClassId, snap: S
   if (st.defense) sim.defense = st.defense;
   if (st.forge) sim.forge = st.forge;
   if (st.chase) sim.chase = st.chase;
+  if (st.escort) sim.escort = st.escort;
   st.pages?.forEach((t, i) => (sim.pages[i]!.taken = t));
   sim.navBlock.excluded.clear();
   for (const r of st.navBlock) sim.navBlock.excluded.add(r);

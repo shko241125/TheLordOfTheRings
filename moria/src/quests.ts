@@ -7,7 +7,7 @@ import type { Sim } from './sim/types';
  * 퀘스트 엔진 (계획서 7장: 퀘스트는 데이터로 정의하고 같은 엔진이 처리한다. 유형 6종 — 도달·처치·수집·호위·방어·퍼즐).
  * 퀘스트 상태를 따로 저장하지 않는다: 단계마다 '시뮬레이션 상태에서 다 됐는가'를 읽는 조건이라, 저장·리플레이·구역 이동이
  * 이미 되살리는 상태(문·화로·보스·등불·방어전·모루·추격)에서 그대로 다시 계산된다. 시뮬레이션은 퀘스트를 모른다(렌더·UI 전용).
- * 호위 유형은 아직 쓰는 퀘스트가 없다.
+ * 호위: 사이드 '갇힌 광부 구출'(sim/escort.ts).
  */
 export type QuestKind = '도달' | '처치' | '수집' | '호위' | '방어' | '퍼즐';
 
@@ -112,6 +112,11 @@ export function sideStatus(sim: Sim, pages: number): SideStatus[] {
   const owns = (l: number) => [...sim.player.inventory, ...sim.player.equipped].some((i) => i?.legendary === l);
   return [
     { id: 'book', title: '마자르불의 책', kind: '수집', detail: `구역마다 흩어진 조각 ${pages}/${PAGE_COUNT} — 다 모으면 발린의 인장`, done: pages >= PAGE_COUNT || owns(LEGEND_SEAL) },
+    {
+      id: 'miner', title: '갇힌 광부 구출', kind: '호위',
+      detail: sim.escort.state === 'following' ? `광부 핀을 동쪽 층계 화로까지 — 체력 ${Math.round(sim.escort.hp)}` : sim.escort.state === 'dead' && sim.level.id === 'zone2' ? '광부 핀이 쓰러졌다 — 화로에서 이어하면 다시' : '21번째 홀 북동 구석에 갇힌 광부 핀을 동쪽 층계 화로까지 데려가라 — 보상: 동료 게이지 +25%',
+      done: sim.player.perks.includes('miner'),
+    },
     { id: 'axe', title: '두린의 도끼', kind: '수집', detail: '대장간의 모루를 지핀 뒤 대장장이 그로르에게 — 미스릴 6 · 금화 150', done: owns(LEGEND_AXE) },
   ];
 }

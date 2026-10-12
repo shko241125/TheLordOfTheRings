@@ -1,5 +1,6 @@
 import { finishDefense, startDefense } from './defense';
 import { lightForge } from './forge';
+import { finishEscort, startEscort } from './escort';
 import { LOOT_PICK_R, pickupItem } from './gear';
 import { BTN_INTERACT, BTN_WORD, type Sim } from './types';
 
@@ -15,6 +16,7 @@ export type Interactable =
   | { kind: 'loot'; id: number; name: string; grade: number }
   | { kind: 'tomb' }
   | { kind: 'npc'; index: number; name: string }
+  | { kind: 'escort'; name: string }
   | { kind: 'page'; index: number };
 
 /** 지금 플레이어가 상호작용할 수 있는 가장 가까운 대상 (렌더의 안내 문구와 시뮬레이션이 같은 판정을 쓴다) */
@@ -53,6 +55,14 @@ export function nearestInteractable(sim: Sim): Interactable | null {
     if (d <= INTERACT_RANGE + 0.3 && Math.abs(n.pos[1] + 1 - t.y) < 2 && d < bestD) {
       bestD = d;
       best = { kind: 'npc', index: i, name: n.name };
+    }
+  }
+  const es = sim.level.escort;
+  if (es && sim.escort.state === 'waiting') {
+    const d = dist(sim.escort.x, sim.escort.z);
+    if (d <= INTERACT_RANGE + 0.3 && Math.abs(sim.escort.y + 1 - t.y) < 2 && d < bestD) {
+      bestD = d;
+      best = { kind: 'escort', name: es.name };
     }
   }
   const def = sim.level.defense;
@@ -113,6 +123,7 @@ export function stepInteract(sim: Sim, pressed: number) {
   else if (target.kind === 'lamp' && (pressed & BTN_INTERACT) !== 0) lightLamp(sim, target.index);
   else if (target.kind === 'loot' && (pressed & BTN_INTERACT) !== 0) pickupItem(sim, target.id);
   else if (target.kind === 'tomb' && (pressed & BTN_INTERACT) !== 0) startDefense(sim);
+  else if (target.kind === 'escort' && (pressed & BTN_INTERACT) !== 0) startEscort(sim);
   else if (target.kind === 'page' && (pressed & BTN_INTERACT) !== 0) {
     const pg = sim.pages[target.index]!;
     pg.taken = true;
@@ -180,6 +191,8 @@ export type Progress = {
   defended?: boolean;
   /** 모루를 다시 지폈다 (구역 4) */
   forged?: boolean;
+  /** 갇힌 광부를 구했다 (구역 2) */
+  rescued?: boolean;
 };
 
 export function progressOf(sim: Sim): Progress {
@@ -191,6 +204,7 @@ export function progressOf(sim: Sim): Progress {
     lampsLit: sim.lamps.flatMap((l, i) => (l.lit ? [i] : [])),
     ...(sim.defense.state === 'done' ? { defended: true } : {}),
     ...(sim.forge.lit ? { forged: true } : {}),
+    ...(sim.escort.state === 'saved' ? { rescued: true } : {}),
   };
 }
 
@@ -201,6 +215,7 @@ export function restoreProgress(sim: Sim, pr: Progress, entry: string | null = n
   for (const i of pr.lit) if (sim.braziers[i]) sim.braziers[i]!.lit = true;
   if (pr.defended) finishDefense(sim, true);
   if (pr.forged) lightForge(sim, true);
+  if (pr.rescued) finishEscort(sim);
   for (const i of pr.bossesDown) {
     const e = sim.enemies.find((x) => x.id === sim.bosses[i]);
     if (!e) continue;

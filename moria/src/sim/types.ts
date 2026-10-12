@@ -121,6 +121,8 @@ export type PlayerState = Mover & {
   mithril: number;
   /** 최근 어둠에 머문 비율 0..1 (지수 이동 평균) — 전리품 등급 */
   darkness: number;
+  /** 영구 보상 (사이드 퀘스트 — 'miner' = 광부 구출: 동료 게이지 +25%) */
+  perks: string[];
   /** 바깥에서 미는 속도 (m/s, 다음 이동 한 번에만 더해지고 0이 된다 — 발로그 날개 바람·채찍) */
   pushX: number;
   pushZ: number;
@@ -249,6 +251,7 @@ export type SimEvent =
   | { type: 'plate'; tick: number; index: number; down: boolean }
   | { type: 'forge'; tick: number }
   | { type: 'chase'; tick: number; stage: 'start' | 'end' }
+  | { type: 'escort'; tick: number; stage: 'follow' | 'hurt' | 'saved' | 'dead' }
   | { type: 'balrog'; tick: number; stage: 'wake' | 'phase3' | 'exposed' | 'break' | 'fall' }
   | { type: 'rest'; tick: number; brazier: number; first: boolean };
 
@@ -304,6 +307,8 @@ export type Sim = {
   readonly classId: import('./classes').ClassId;
   /** 방어전 (구역 3) */
   defense: import('./defense').DefenseState;
+  /** 호위 (구역 2 — 갇힌 광부 구출) */
+  escort: import('./escort').EscortState;
   /** 불길 추격 (구역 5): 불의 벽이 z를 따라 다가온다 */
   chase: { state: 'idle' | 'run' | 'done'; z: number };
   /** 대장간 (구역 4): 모루가 타오른다, 발판마다 눌림 */

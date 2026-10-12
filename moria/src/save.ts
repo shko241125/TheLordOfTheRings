@@ -13,7 +13,8 @@ import type { Item } from './sim/items';
 const KEY = 'moria.save';
 export const SAVE_VERSION = 5;
 
-export type Growth = { level: number; xp: number; points: number; skills: number[] };
+/** perks: 사이드 퀘스트 영구 보상 (v5 안의 선택 필드 — 없으면 빈 목록) */
+export type Growth = { level: number; xp: number; points: number; skills: number[]; perks?: string[] };
 export type Gear = { inventory: Item[]; equipped: (Item | null)[]; gold: number; mithril: number };
 const EMPTY_GEAR: Gear = { inventory: [], equipped: [null, null, null, null, null, null], gold: 0, mithril: 0 };
 export type SaveData = {
@@ -60,8 +61,8 @@ function validProgress(p: unknown): Progress | null {
   const r = p as Record<string, unknown>;
   const lampsLit = r.lampsLit ?? [];
   if (!ints(r.doorsOpen) || !ints(r.lit) || !Number.isInteger(r.checkpoint) || !ints(r.bossesDown) || !ints(lampsLit)) return null;
-  if ((r.defended !== undefined && typeof r.defended !== 'boolean') || (r.forged !== undefined && typeof r.forged !== 'boolean')) return null;
-  return { doorsOpen: r.doorsOpen, lit: r.lit, checkpoint: r.checkpoint as number, bossesDown: r.bossesDown, lampsLit, ...(r.defended ? { defended: true } : {}), ...(r.forged ? { forged: true } : {}) };
+  for (const k of ['defended', 'forged', 'rescued']) if (r[k] !== undefined && typeof r[k] !== 'boolean') return null;
+  return { doorsOpen: r.doorsOpen, lit: r.lit, checkpoint: r.checkpoint as number, bossesDown: r.bossesDown, lampsLit, ...(r.defended ? { defended: true } : {}), ...(r.forged ? { forged: true } : {}), ...(r.rescued ? { rescued: true } : {}) };
 }
 
 /** 옛 버전 → 현재 버전. 한 단계씩 올린다 */
@@ -88,11 +89,12 @@ export function migrate(raw: unknown): SaveData | null {
   }
   const g = r.growth as Partial<Growth> | undefined;
   if (!g || !Number.isInteger(g.level) || !Number.isInteger(g.xp) || !Number.isInteger(g.points) || !ints(g.skills)) return null;
+  const perks = Array.isArray(g.perks) ? g.perks.filter((x): x is string => typeof x === 'string') : [];
   const gear = validGear(r.gear);
   if (!gear || !ints(r.pages)) return null;
   return {
     v: SAVE_VERSION, classId: r.classId as ClassId, zone: r.zone as ZoneId, entry: (r.entry as string | null) ?? null,
-    progress, growth: { level: g.level!, xp: g.xp!, points: g.points!, skills: g.skills }, gear, pages: r.pages,
+    progress, growth: { level: g.level!, xp: g.xp!, points: g.points!, skills: g.skills, ...(perks.length ? { perks } : {}) }, gear, pages: r.pages,
   };
 }
 

@@ -23,6 +23,7 @@ import { urukGuard } from './uruk';
 import { createDefense, defenseActive, stepDefense } from './defense';
 import { lavaLights, stepForge } from './forge';
 import { balrogArmor, stepChase } from './balrog';
+import { createEscort, stepEscort } from './escort';
 import { giveStartingTorch, updateTorches } from './torch';
 import { BTN_CALL, BTN_DODGE, BTN_LIGHT, G_CHAR, G_LEVEL, groups, type InputFrame, type Sim, type SimLight, type V3 } from './types';
 
@@ -93,7 +94,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
       lockTarget: -1, riposteUntil: -1, dodgeDirX: 0, dodgeDirZ: 0,
       heldTorch: -1, spareTorches: 2, senseReadyAt: 0, companion: 0,
       level: 1, xp: 0, points: 0, skills: [], mods: { ...BASE_MODS },
-      inventory: [], equipped: [null, null, null, null, null, null], gold: 0, mithril: 0, darkness: 0, pushX: 0, pushZ: 0,
+      inventory: [], equipped: [null, null, null, null, null, null], gold: 0, mithril: 0, darkness: 0, pushX: 0, pushZ: 0, perks: [],
     },
     enemies: [],
     enemyController: makeController(world),
@@ -126,6 +127,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
     navBlock: createNavBlock(),
     classId,
     defense: createDefense(),
+    escort: createEscort(level),
     chase: { state: 'idle', z: level.chase?.startZ ?? 0 },
     forge: { lit: false, plates: (level.forge?.plates ?? []).map(() => false) },
     pages: (level.pages ?? []).map((p) => ({ id: p.id, x: p.pos[0], y: p.pos[1], z: p.pos[2], taken: false })),
@@ -240,6 +242,7 @@ export function stepSim(sim: Sim, input: InputFrame): void {
   stepDefense(sim);
   stepForge(sim);
   stepChase(sim);
+  stepEscort(sim);
   // 문이 닫힌 동안(서문 밖)은 디렉터가 쉰다 — 내비메시는 문을 열린 상태로 보므로 물결이 문에 막혀 버린다
   // 보스전 중에도 쉰다 (L4D의 보스 이벤트처럼 물결과 겹치지 않게)
   if (sim.doors.every((d) => d.open) && !bossAwake(sim) && !defenseActive(sim)) stepDirector(sim, lights);
@@ -285,6 +288,8 @@ export function hashSim(sim: Sim): number {
   }
   for (const p of sim.pillars) h = mix(h, p.body ? 1 : 0);
   if (p.pushX || p.pushZ) h = mix(h, p.pushX, p.pushZ);
+  if (sim.escort.state !== 'waiting') h = mix(h, ['waiting', 'following', 'saved', 'dead'].indexOf(sim.escort.state), sim.escort.x, sim.escort.z, sim.escort.hp);
+  if (p.perks.length) h = mix(h, p.perks.length);
   if (sim.chase.state !== 'idle') h = mix(h, ['idle', 'run', 'done'].indexOf(sim.chase.state), sim.chase.z);
   h = mix(h, p.companion, p.level, p.xp, p.points, p.maxHp, ...p.skills);
   if (p.inventory.length || p.gold || p.mithril || sim.loot.length || sim.nextItemId || p.equipped.some(Boolean)) {
