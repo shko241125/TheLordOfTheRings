@@ -112,7 +112,7 @@ export function createHud() {
         : target.kind === 'door' ? '비문 읽기'
         : target.kind === 'lamp' ? '등불 밝히기'
         : target.kind === 'npc' ? `대화 — ${target.name}`
-        : target.kind === 'escort' ? `데리고 나가기 — ${target.name}`
+        : target.kind === 'escort' ? `${target.saved ? '대화' : '데리고 나가기'} — ${target.name}`
         : target.kind === 'tomb' ? '발린의 무덤 — 책을 펼친다 (방어전 시작)'
         : target.kind === 'page' ? '마자르불의 책 조각 줍기'
         : target.kind === 'loot' ? `줍기 — <span style="color:${GRADE_COLORS[target.grade]}">${GRADE_NAMES[target.grade]} ${target.name}</span>`

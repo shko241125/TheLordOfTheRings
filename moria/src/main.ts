@@ -42,6 +42,7 @@ import { createGearPanel } from './render/gearPanel';
 import { createShopPanel } from './render/shopPanel';
 import { createEscortView, createNpcView } from './render/npcs';
 import { createJournal } from './render/journal';
+import { createDialoguePanel } from './render/dialoguePanel';
 import { mainStatus } from './quests';
 import { CMD_BOOK } from './sim/shop';
 import { createLootView } from './render/loot';
@@ -272,13 +273,18 @@ async function boot() {
       e.preventDefault();
       const panel = e.code === 'Tab' ? skillPanel : e.code === 'KeyI' ? gearPanel : journal;
       if (!panel.open) document.exitPointerLock?.();
-      for (const other of [skillPanel, gearPanel, journal, shopPanel]) if (other !== panel) other.close();
+      for (const other of [skillPanel, gearPanel, journal, shopPanel, dialogue]) if (other !== panel) other.close();
       start.style.display = 'grid';
       panel.toggle();
     }
     if (e.code === 'KeyB' && replayState === 'ready') gotoReplay();
-    if (e.code === settings.keys.interact && shopPanel.open) {
+    if (e.code === settings.keys.interact && (shopPanel.open || dialogue.open)) {
       shopPanel.close();
+      dialogue.close();
+      return;
+    }
+    if (dialogue.open && /^Digit[1-3]$/.test(e.code)) {
+      dialogue.pick(Number(e.code.slice(5)) - 1);
       return;
     }
     if (e.code === settings.keys.interact && talk()) return;
@@ -324,16 +330,19 @@ async function boot() {
   );
   const shopPanel = createShopPanel(start, sim, (cmd) => input.command(cmd));
   const journal = createJournal(start, sim, () => pagesAll.size);
-  /** NPC 곁에서 E: 상점 창 (일시정지 화면 안 — 마우스로 고른다) */
+  let talkingTo: { kind: 'merchant' | 'smith'; name: string } | null = null;
+  const dialogue = createDialoguePanel(start, () => ({ sim, pages: pagesAll.size }), () => talkingTo && shopPanel.show(talkingTo));
+  /** NPC·구한 광부 곁에서 E: 대화 창 (일시정지 화면 안 — 마우스나 숫자 키로 고른다). 대화에서 상점으로 간다 */
   const talk = () => {
     const t = nearestInteractable(sim);
-    if (t?.kind !== 'npc') return false;
-    const n = sim.level.npcs![t.index]!;
+    const npc = t?.kind === 'npc' ? sim.level.npcs![t.index]! : null;
+    if (!npc && !(t?.kind === 'escort' && t.saved)) return false;
     document.exitPointerLock?.();
-    skillPanel.close();
-    gearPanel.close();
+    for (const p of [skillPanel, gearPanel, journal, shopPanel]) p.close();
     start.style.display = 'grid';
-    shopPanel.show(n);
+    talkingTo = npc;
+    if (npc) dialogue.show(npc.kind, npc.name);
+    else dialogue.show('miner', sim.level.escort!.name);
     return true;
   };
   // 터치 조작 (모바일 Low 단계): 터치 기기이거나 ?touch=1. 포인터 잠금이 없으므로 시작 화면은 탭으로 닫고 ❚❚로 다시 연다

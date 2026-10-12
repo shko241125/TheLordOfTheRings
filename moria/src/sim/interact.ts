@@ -16,7 +16,7 @@ export type Interactable =
   | { kind: 'loot'; id: number; name: string; grade: number }
   | { kind: 'tomb' }
   | { kind: 'npc'; index: number; name: string }
-  | { kind: 'escort'; name: string }
+  | { kind: 'escort'; name: string; saved: boolean }
   | { kind: 'page'; index: number };
 
 /** 지금 플레이어가 상호작용할 수 있는 가장 가까운 대상 (렌더의 안내 문구와 시뮬레이션이 같은 판정을 쓴다) */
@@ -58,11 +58,12 @@ export function nearestInteractable(sim: Sim): Interactable | null {
     }
   }
   const es = sim.level.escort;
-  if (es && sim.escort.state === 'waiting') {
+  // 기다리는 광부(데리고 나가기) · 구한 광부(대화)
+  if (es && (sim.escort.state === 'waiting' || sim.escort.state === 'saved')) {
     const d = dist(sim.escort.x, sim.escort.z);
     if (d <= INTERACT_RANGE + 0.3 && Math.abs(sim.escort.y + 1 - t.y) < 2 && d < bestD) {
       bestD = d;
-      best = { kind: 'escort', name: es.name };
+      best = { kind: 'escort', name: es.name, saved: sim.escort.state === 'saved' };
     }
   }
   const def = sim.level.defense;
