@@ -1,15 +1,17 @@
 /**
  * 성능 예산 측정 (계획서 M5 1번): 구역마다 방 가운데에 서서 draw call·삼각형·켜진 광원·그림자 광원·시뮬레이션 틱을 잰다.
  * 개발 서버 + 개발 훅(__moria.perf). 품질 Low·High 각각. 결과는 마크다운 표로 찍는다 (FPS는 GPU 없는 환경이라 재지 않는다).
- *   node scripts/perf.mjs [webgpu|webgl]
+ *   node scripts/perf.mjs [webgpu|webgl] [zoneN]
  */
 import puppeteer from 'puppeteer-core';
 import { createServer } from 'vite';
 
 const CHROME = process.env.CHROME_PATH ?? '/usr/bin/google-chrome';
 const BACKEND = process.argv[2] === 'webgl' ? 'webgl' : 'webgpu';
-const ZONES = ['zone1', 'zone2', 'zone3', 'zone4', 'zone5'];
+const ZONES = process.argv[3] ? [process.argv[3]] : ['zone1', 'zone2', 'zone3', 'zone4', 'zone5'];
 const QUALITIES = ['low', 'high'];
+// 방 가운데로는 못 재는 장면 (다리 방 가운데는 용암 바닥이다). 다리 위 z −82는 추격 안전선(−80)을 넘어 발로그가 깨어난다
+const SCENES = { zone5: [{ name: '발로그전 (다리 위)', x: 0, y: 0, z: -82 }] };
 const BUDGET = { low: { draw: 100, lights: 16, shadows: 1 }, high: { draw: 300, lights: 64, shadows: 2 } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -38,14 +40,18 @@ for (const q of QUALITIES) {
     await p.evaluate((s) => localStorage.setItem('moria.save', s), save(zone));
     await p.goto(`http://localhost:5192/?quality=${q}${BACKEND === 'webgl' ? '&backend=webgl' : ''}`, { waitUntil: 'load' });
     await p.waitForFunction(() => window.__moria, { timeout: 500_000, polling: 2000 });
-    const rooms = await p.evaluate(() => window.__moria.sim.level.rooms.map((r) => ({ name: r.name, x: (r.min[0] + r.max[0]) / 2, y: r.min[1], z: (r.min[2] + r.max[2]) / 2 })));
+    const rooms = [
+      ...(await p.evaluate(() => window.__moria.sim.level.rooms.map((r) => ({ name: r.name, x: (r.min[0] + r.max[0]) / 2, y: r.min[1], z: (r.min[2] + r.max[2]) / 2 })))),
+      ...(SCENES[zone] ?? []),
+    ];
+    // 전투 장면에서도 끝까지 서 있도록 체력을 계속 채운다 (개발 측정 전용 — 결정론과 무관)
+    await p.evaluate(() => setInterval(() => (window.__moria.sim.player.hp = window.__moria.sim.player.maxHp), 100));
     // 시작 화면을 눌러 게임을 돌린다 (틱이 흘러야 틱 시간이 쌓인다)
     await p.mouse.click(640, 360);
     for (const r of rooms) {
-      // 매 측정 전에 체력을 채우고 방 가운데로 옮긴다 (용암·낭떠러지 위면 바닥이 없을 수 있다 — 그래도 보이는 것은 같다)
+      // 매 측정 전에 방 가운데로 옮긴다 (용암·낭떠러지 위면 바닥이 없을 수 있다 — 그래도 보이는 것은 같다)
       await p.evaluate((r) => {
         const s = window.__moria.sim;
-        s.player.hp = s.player.maxHp;
         s.player.body.setTranslation({ x: r.x, y: r.y + 1.5, z: r.z }, true);
       }, r);
       await sleep(1500);
