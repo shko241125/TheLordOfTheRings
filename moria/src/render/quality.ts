@@ -23,6 +23,8 @@ export function detectQuality(backend: Backend): Quality {
 export function applyQuality(q: Quality, renderer: WebGPURenderer, gs: GameScene) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, q === 'high' ? 2 : q === 'medium' ? 1.5 : 1));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  // 계획서 14장: 동적 광원 Low ≤ 16 — 고정 광원 12 + 들고 있는 횃불·보조광·던진 횃불·대장간 불 몫 4
+  gs.setLightBudget(q === 'low' ? 12 : Infinity);
   const t = gs.playerTorch;
   t.castShadow = q !== 'low';
   const size = q === 'high' ? 1024 : 512;

@@ -51,7 +51,8 @@ export function createNpcView(level: Level, parent: Object3D, backend: Backend) 
     if (n.kind === 'fellow') g.scale.set(1.15, 1.45, 1.15);
     g.position.set(n.pos[0], n.pos[1], n.pos[2]);
     g.rotation.y = angleToRad(n.facing);
-    g.traverse((o) => (o.castShadow = true));
+    // 메시만 — 상인 등불(점광원)까지 켜면 점광원 그림자(정육면체 6면)로 draw call이 100 가까이 는다 (M5-F 측정)
+    g.traverse((o) => (o.castShadow = (o as Mesh).isMesh === true));
     parent.add(g);
   }
 }

@@ -421,6 +421,8 @@ async function boot() {
   const dev = import.meta.env.DEV ? await import('./dev').then((m) => m.attachDev(renderer, gs, backend)) : null;
 
   let last = performance.now();
+  /** 개발 빌드: 최근 240틱의 시뮬레이션 시간 (ms) — 성능 예산 측정용 */
+  const tickMs: number[] = [];
   let fpsAcc = 0;
   let fpsFrames = 0;
   let landedAirThisFrame = 0;
@@ -485,7 +487,9 @@ async function boot() {
       }
       Object.assign(prev, { facing: curr.facing, vx: curr.vx, vz: curr.vz });
       prev.pos.copy(curr.pos);
+      const t0 = import.meta.env.DEV ? performance.now() : 0;
       stepSim(sim, frame);
+      if (import.meta.env.DEV) tickMs.push(performance.now() - t0) > 240 && tickMs.shift();
       capture(curr);
       goblins.capture();
       trolls.capture();
@@ -781,6 +785,21 @@ async function boot() {
       input,
       loco: () => loco.debug(),
       lighting: () => gs.stats(),
+      /** 성능 예산 측정 (scripts/perf.mjs): 최근 틱 평균·95백분위, 켜진 광원 수, 그림자 광원 수. reset이면 틱 기록을 비운다 (순간이동 직후 튐을 빼려고) */
+      perf: (reset = false) => {
+        if (reset) return void (tickMs.length = 0);
+        let lights = 0, shadows = 0;
+        gs.scene.traverseVisible((o) => {
+          const l = o as import('three').Light;
+          if (!l.isLight || l.intensity <= 0 || (l as unknown as { isHemisphereLight?: boolean }).isHemisphereLight) return;
+          lights++;
+          if (l.castShadow) shadows++;
+        });
+        const avg = tickMs.reduce((a, b) => a + b, 0) / Math.max(1, tickMs.length);
+        const r = renderer.info.render;
+        const sorted = [...tickMs].sort((a, b) => a - b);
+        return { draw: r.drawCalls, tris: r.triangles, lights, shadows, tickAvg: avg, tickP95: sorted[Math.floor(sorted.length * 0.95)] ?? 0 };
+      },
       horde: () => hordeView?.stats(),
       spawnHorde: async (x: number, y: number, z: number, n: number) => (await import('./sim/horde')).spawnHorde(sim, [x, y, z], n),
       determinism: async () => (await import('./dev')).runDeterminism(),

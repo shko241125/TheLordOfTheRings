@@ -6,6 +6,7 @@ npm run dev          # http://localhost:5173
 npm test             # 단위·이동 테스트 + 결정성 회귀 테스트
 npm run build        # 타입 검사 + 프로덕션 빌드
 npm run smoke        # 실제 브라우저 스모크: 개발 서버(새 게임 → 문 → 화로 저장 → 새로고침 → 이어하기) + 배포 빌드(부팅·이동), WebGPU·WebGL2, 콘솔 에러 0
+npm run perf         # 성능 예산 측정: 구역 5개의 방마다 Low·High로 draw call·광원·그림자 광원·틱 p95 (예산 초과면 종료 코드 1)
                      # 브라우저 경로는 CHROME_PATH (기본 /usr/bin/google-chrome)
 ```
 

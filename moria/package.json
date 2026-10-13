@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "perf": "node scripts/perf.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",

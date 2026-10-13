@@ -71,6 +71,8 @@ export type GameScene = {
   seen(x: number, y: number, z: number): boolean;
   /** 방 번호 (방이 없는 레벨·방 밖이면 −1) */
   roomAt(p: Vector3): number;
+  /** 고정 광원(벽 횃불·화로·등불·용암) 동시 상한 — 넘으면 플레이어에게서 먼 것부터 끈다 (WebGPU. Low 예산 16에서 들고 있는 횃불·보조광·던진 횃불 몫을 뺀 값) */
+  setLightBudget(n: number): void;
   /** 품질 확인용 수치 */
   stats(): { torchLights: number; lightingMode: string; rooms: number };
   dispose(): void;
@@ -286,6 +288,14 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
     return { fire, light, pos: new Vector3(x, y + 2.4, z), room: roomOf(x, y + 0.5, z), lit: false };
   });
 
+  /** 컬링·광원 예산을 받는 고정 광원 (WebGPU에서만 장면에 있다) */
+  const statics: { l: PointLight; room: number }[] =
+    backend === 'webgpu'
+      ? [...torchLights.map((l, i) => ({ l, room: torchRoom[i]! })), ...braziers.map((b) => ({ l: b.light, room: b.room })), ...lamps.map((l) => ({ l: l.light, room: l.room }))]
+      : [];
+  let lightBudget = Infinity;
+  const ranked: { l: PointLight; room: number }[] = [];
+
   // --- 용암 (구역 4): 스스로 빛나는 판 + 시뮬레이션과 같은 자리의 주황 광원 (WebGL은 광원 풀이 작아 판만) ---
   const lavaMat = track(new MeshBasicMaterial({ color: new Color(1.0, 0.32, 0.05) }));
   for (const l of level.lava ?? []) {
@@ -300,6 +310,7 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
       const l = new PointLight(0xff5a18, 45, 10, 2);
       l.position.set(p.x, p.y, p.z);
       scene.add(l);
+      statics.push({ l, room: roomOf(p.x, p.y, p.z) });
     }
   }
 
@@ -524,10 +535,16 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
         }
       }
       for (let i = 0; i < roomGroups.length; i++) roomGroups[i]!.visible = visible[i]!;
-      if (backend === 'webgpu') {
-        for (let i = 0; i < torchLights.length; i++) torchLights[i]!.visible = torchRoom[i]! < 0 || visible[torchRoom[i]!]!;
-        for (const b of braziers) b.light.visible = b.room < 0 || visible[b.room]!;
-        for (const l of lamps) l.light.visible = l.room < 0 || visible[l.room]!;
+      // 보이는 방의 켜진 고정 광원만. 예산을 넘으면 플레이어에게서 먼 것부터 끈다
+      // ponytail: 예산 경계의 광원은 걸을 때 켜졌다 꺼질 수 있다 — 거슬리면 거리에 따라 세기를 줄이는 페이드로
+      ranked.length = 0;
+      for (const s of statics) {
+        s.l.visible = (s.room < 0 || visible[s.room]!) && s.l.intensity > 0;
+        if (s.l.visible) ranked.push(s);
+      }
+      if (ranked.length > lightBudget) {
+        ranked.sort((a, b) => a.l.position.distanceToSquared(player) - b.l.position.distanceToSquared(player));
+        for (let i = lightBudget; i < ranked.length; i++) ranked[i]!.l.visible = false;
       }
       visibleList.length = 0;
       visible.forEach((v, i) => v && visibleList.push(i));
@@ -536,6 +553,9 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
     seen(x, y, z) {
       const r = roomOf(x, y + 0.2, z);
       return r < 0 || visible[r]!;
+    },
+    setLightBudget(n) {
+      lightBudget = n;
     },
     roomAt: (p) => (level.rooms?.length ? roomOf(p.x, p.y, p.z) : -1),
     stats: () => ({ torchLights: torchLights.length + dynLights.length + (backend === 'webgpu' ? braziers.length + lamps.length : 0), lightingMode, rooms: rooms.length }),
