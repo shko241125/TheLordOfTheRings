@@ -8,7 +8,7 @@ import { ZONES } from '../src/sim/zones';
 let sims: Sim[] = [];
 beforeAll(async () => {
   await RAPIER.init();
-  sims = [createSim(ZONES.zone2, 1), createSim(ZONES.zone4, 1)];
+  sims = [createSim(ZONES.zone2, 1), createSim(ZONES.zone4, 1), createSim(ZONES.zone5, 1, 'dwarf')];
 });
 
 /** 상태 조합: 모루 꺼짐/켜짐 × 광부 기다림/구함 × 책 0/12 */
@@ -77,6 +77,14 @@ describe('대화', () => {
     expect(book).toContain('3장');
     const saved = contexts().find((c) => c.sim.escort.state === 'saved' && c.sim.level.id === 'zone2')!;
     expect(view(TREES.merchant, 'news', saved).say).toContain('핀');
+  });
+
+  it('원정대원: 종족의 동료가 말하고 (구역 5), 발로그 요령을 준다', () => {
+    const c = contexts().find((x) => x.sim.level.id === 'zone5')!;
+    expect(view(TREES.fellow, 'hi', c).say).toContain('김리');
+    expect(view(TREES.fellow, 'balrog', c).say).toContain('가슴');
+    const z5 = sims[2]!;
+    expect(z5.level.npcs?.some((n) => n.kind === 'fellow')).toBe(true);
   });
 
   it('정리', () => sims.forEach(disposeSim));

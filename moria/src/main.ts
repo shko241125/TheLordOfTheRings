@@ -1,3 +1,4 @@
+import { COMPANIONS } from './sim/companion';
 import type { NavMesh } from 'navcat';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three/webgpu';
@@ -340,8 +341,8 @@ async function boot() {
     document.exitPointerLock?.();
     for (const p of [skillPanel, gearPanel, journal, shopPanel]) p.close();
     start.style.display = 'grid';
-    talkingTo = npc;
-    if (npc) dialogue.show(npc.kind, npc.name);
+    talkingTo = npc && npc.kind !== 'fellow' ? { kind: npc.kind, name: npc.name } : null;
+    if (npc) dialogue.show(npc.kind, npc.kind === 'fellow' ? COMPANIONS[classId].who : npc.name);
     else dialogue.show('miner', sim.level.escort!.name);
     return true;
   };

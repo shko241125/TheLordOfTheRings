@@ -77,7 +77,8 @@ export type Level = {
   /** 호위 퀘스트 (구역 2 — 갇힌 광부 구출): pos에서 기다리다 E로 따라오고, goal 반경 goalR 안에 들어오면 구출 */
   escort?: { name: string; pos: Vec3; goal: Vec3; goalR: number };
   /** NPC (계획서 8장 — 상인·대장장이). 대화(E)는 상점 창을 연다. 대장장이는 모루가 타오른 뒤에만 일한다 */
-  npcs?: readonly { kind: 'merchant' | 'smith'; name: string; pos: Vec3; facing: number }[];
+  /** fellow = 원정대원 (종족의 동료 — 이름은 종족에 따라: 아라곤·김리·레골라스. 대화만 한다) */
+  npcs?: readonly { kind: 'merchant' | 'smith' | 'fellow'; name: string; pos: Vec3; facing: number }[];
   /** 마자르불의 책 조각 (바닥 높이). id는 게임 전체에서 고유 (0..11) */
   pages?: readonly { id: number; pos: Vec3 }[];
   /** 부서지는 원기둥 (solids 번호). 렌더는 이것들을 합치지 않고 따로 그린다 */

@@ -63,6 +63,8 @@ export const ZONE5: Level = {
   // 다리 아래 불의 심연: 떨어지면 끝
   lava: [{ min: [-16, -36, -122], max: [16, -26, -70] }],
   pages: [{ id: 5, pos: [5, 0, -2] }],
+  // 원정대원: 남쪽 통로 화로 곁 (종족의 동료 — 발로그전 요령)
+  npcs: [{ kind: 'fellow', name: '원정대원', pos: [-1.6, 0, 6], facing: 3072 }],
   entries: { south: { pos: [0, 1.2, 9], facing: 0 } },
   exits: [
     { min: [-3, -1, 10.5], max: [3, 6, 12], to: 'zone4', entry: 'north' },

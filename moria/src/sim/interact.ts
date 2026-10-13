@@ -1,3 +1,4 @@
+import { COMPANIONS } from './companion';
 import { finishDefense, startDefense } from './defense';
 import { lightForge } from './forge';
 import { finishEscort, startEscort } from './escort';
@@ -54,7 +55,7 @@ export function nearestInteractable(sim: Sim): Interactable | null {
     const d = dist(n.pos[0], n.pos[2]);
     if (d <= INTERACT_RANGE + 0.3 && Math.abs(n.pos[1] + 1 - t.y) < 2 && d < bestD) {
       bestD = d;
-      best = { kind: 'npc', index: i, name: n.name };
+      best = { kind: 'npc', index: i, name: n.kind === 'fellow' ? COMPANIONS[sim.classId].who : n.name };
     }
   }
   const es = sim.level.escort;

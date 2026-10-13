@@ -17,11 +17,11 @@ export function createNpcView(level: Level, parent: Object3D, backend: Backend) 
   const iron = new MeshStandardMaterial({ color: 0x3a3a3c, roughness: 0.5, metalness: 0.7 });
   for (const n of npcs) {
     const g = new Group();
-    const body = new Mesh(new CylinderGeometry(0.36, 0.5, 1.0, 12), robe(n.kind === 'smith' ? 0x3a2a20 : 0x3c4a32));
+    const body = new Mesh(new CylinderGeometry(0.36, 0.5, 1.0, 12), robe(n.kind === 'smith' ? 0x3a2a20 : n.kind === 'fellow' ? 0x2c3640 : 0x3c4a32));
     body.position.y = 0.5;
     const head = new Mesh(new SphereGeometry(0.2, 12, 8), skin);
     head.position.y = 1.22;
-    const hood = new Mesh(new ConeGeometry(0.26, 0.4, 12), robe(n.kind === 'smith' ? 0x2a1e18 : 0x2e3a26));
+    const hood = new Mesh(new ConeGeometry(0.26, 0.4, 12), robe(n.kind === 'smith' ? 0x2a1e18 : n.kind === 'fellow' ? 0x232b33 : 0x2e3a26));
     hood.position.y = 1.45;
     const bd = new Mesh(new ConeGeometry(0.17, 0.5, 8), beard);
     bd.position.set(0, 0.95, -0.14);
@@ -47,6 +47,8 @@ export function createNpcView(level: Level, parent: Object3D, backend: Backend) 
       hammer.rotation.z = 0.4;
       g.add(hammer);
     }
+    // 원정대원: 드워프 도형을 키워 사람 키(≈1.9m)로 — 회색 망토, 손의 무기는 망치 대신 같은 막대(칼자루처럼)
+    if (n.kind === 'fellow') g.scale.set(1.15, 1.45, 1.15);
     g.position.set(n.pos[0], n.pos[1], n.pos[2]);
     g.rotation.y = angleToRad(n.facing);
     g.traverse((o) => (o.castShadow = true));

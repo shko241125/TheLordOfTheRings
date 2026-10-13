@@ -1,4 +1,5 @@
 import { PAGE_COUNT } from './pages';
+import { COMPANIONS } from './sim/companion';
 import type { Sim } from './sim/types';
 
 /**
@@ -15,7 +16,36 @@ export type Tree = { start: string; nodes: Record<string, Node> };
 const t = (x: Text, c: Ctx) => (typeof x === 'function' ? x(c) : x);
 const bye: Choice = { label: '다음에 보세.', action: 'close' };
 
-export const TREES: Record<'merchant' | 'smith' | 'miner', Tree> = {
+const who = (c: Ctx) => COMPANIONS[c.sim.classId].who;
+
+/** 원정대원 (구역 5 남쪽 통로 — 발로그전 직전). 종족의 동료가 말한다 */
+const FELLOW: Tree = {
+  start: 'hi',
+  nodes: {
+    hi: {
+      say: (c) => `${who(c)}: 여기까지 왔군. 홀 저편에서 불길이 일어난다 — 간달프는 무언가 오래된 것이 깨어났다고 했어.`,
+      choices: [
+        { label: '무엇이 오는가?', to: 'balrog' },
+        { label: '나를 도와줄 수 있나?', to: 'call' },
+        { label: '가자.', action: 'close' },
+      ],
+    },
+    balrog: {
+      say: '두린의 재앙. 칼로 쓰러뜨릴 수 있는 것이 아니야. 불칼을 내리찍은 뒤 칼이 다리에 박혀 있는 동안만 가슴이 열린다 — 그때를 노려. 날개가 들리면 몸을 낮춰 버텨라, 다리엔 난간이 없다.',
+      choices: [{ label: '불길은?', to: 'fire' }, { label: '알겠다.', to: 'hi' }],
+    },
+    fire: {
+      say: '홀에 들어서는 순간 뒤에서 불이 쫓아온다. 숨을 아껴 두었다가 달려 — 다리까지 멈추지 마.',
+      choices: [{ label: '알겠다.', to: 'hi' }],
+    },
+    call: {
+      say: (c) => `부르면 간다(Q). 적을 쓰러뜨릴수록 빨리 닿지${c.sim.player.perks.includes('miner') ? ' — 광부를 구했다니, 그 덕에 더 빨라졌겠군' : ''}. 마지막엔 간달프가 다리에 선다. 그가 외치면 건너라.`,
+      choices: [{ label: '알겠다.', to: 'hi' }],
+    },
+  },
+};
+
+export const TREES: Record<'merchant' | 'smith' | 'miner' | 'fellow', Tree> = {
   merchant: {
     start: 'hi',
     nodes: {
@@ -88,7 +118,9 @@ export const TREES: Record<'merchant' | 'smith' | 'miner', Tree> = {
       },
     },
   },
+  fellow: FELLOW,
 };
+
 
 /** 화면에 보일 마디: 말과, 지금 고를 수 있는 선택지(조건을 통과한 것, 최대 3) */
 export function view(tree: Tree, id: string, c: Ctx) {

@@ -212,7 +212,7 @@ export function stepSim(sim: Sim, input: InputFrame): void {
   // UI 명령 (스킬 배우기·초기화) — 히트스톱이어도 받는다
   if (input.cmd) {
     const near = nearestInteractable(sim);
-    applyCommand(sim, input.cmd, near?.kind === 'brazier' && near.lit, near?.kind === 'npc' ? sim.level.npcs![near.index]!.kind : null);
+    applyCommand(sim, input.cmd, near?.kind === 'brazier' && near.lit, near?.kind === 'npc' && sim.level.npcs![near.index]!.kind !== 'fellow' ? (sim.level.npcs![near.index]!.kind as 'merchant' | 'smith') : null);
   }
   if (sim.hitstop > 0) {
     // 히트스톱: 세상은 멈추지만 입력은 흘려보내지 않는다 (누른 순간을 버퍼에 담는다)
