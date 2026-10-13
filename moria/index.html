@@ -11,6 +11,8 @@
       #hud { position: fixed; left: 12px; bottom: 10px; font: 12px/1.4 ui-monospace, monospace; color: #9a8f7a; pointer-events: none; white-space: pre; }
       #start { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0,0,0,.75); color: #d8cbb0; font: 18px/1.6 serif; cursor: pointer; text-align: center; }
       #start small { display: block; font-size: 13px; color: #8a7f6a; }
+      /* 계획서 17장: 시작·일시정지 화면에 늘 보이는 고지 (main이 #start 내용을 바꿔도 남도록 의사 요소로) */
+      #start::after { content: '비공식 비상업 팬 게임 — 원작자·권리자와 관계가 없습니다'; position: absolute; left: 0; right: 0; top: 14px; font-size: 12px; color: #6a6050; }
       #error { position: fixed; inset: 0; z-index: 30; display: none; place-items: center; background: #000; color: #e0a090; font: 14px/1.6 ui-monospace, monospace; padding: 24px; white-space: pre-wrap; }
     </style>
   </head>

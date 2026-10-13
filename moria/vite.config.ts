@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { lorePlugin } from './scripts/lore';
 
 /**
  * 시뮬레이션 버전 = src/sim·src/core 파일 내용의 해시. 리플레이는 이 값이 같을 때만 재생한다
@@ -16,6 +17,8 @@ function simVersion(): string {
 }
 
 export default defineConfig({
+  plugins: [lorePlugin()],
+  worker: { plugins: () => [lorePlugin()] }, // 내비 워커도 레벨 데이터(잠긴 출구 문구)를 품는다
   define: { __SIM_VERSION__: JSON.stringify(simVersion()) },
   server: {
     // WSL에서 /mnt/c(Windows 드라이브)는 inotify가 동작하지 않아 파일 변경을 못 잡는다 → 폴링
