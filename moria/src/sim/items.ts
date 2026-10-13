@@ -132,6 +132,7 @@ const LABEL: Record<keyof Mods, (v: number) => string> = {
   sense: (v) => `감각 반경 +${v}m`,
   senseCd: (v) => `감각 재사용 −${(v / 60).toFixed(0)}초`,
   dark: (v) => `어둠 보너스 +${v.toFixed(2)}`,
+  taken: (v) => `받는 피해 −${Math.round((1 - v) * 100)}%`,
 };
 export function describe(it: Item): string[] {
   const out: string[] = [];

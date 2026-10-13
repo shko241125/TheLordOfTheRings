@@ -45,8 +45,10 @@ export type Mods = {
   senseCd: number;
   /** 빛의 도박 어둠 보너스 추가 */
   dark: number;
+  /** 받는 피해 배율 (스토리 난이도 0.5) */
+  taken: number;
 };
-export const BASE_MODS: Mods = { dmg: 1, heavy: 1, hp: 0, stamina: 1, parry: 0, iframe: 0, riposte: 0, ally: 1, sense: 0, senseCd: 0, dark: 0 };
+export const BASE_MODS: Mods = { dmg: 1, heavy: 1, hp: 0, stamina: 1, parry: 0, iframe: 0, riposte: 0, ally: 1, sense: 0, senseCd: 0, dark: 0, taken: 1 };
 
 export type SkillNode = { branch: 0 | 1 | 2; tier: 1 | 2 | 3 | 4 | 5; name: string; desc: string; mods: Partial<Mods> };
 export type Tree = { branches: readonly [string, string, string]; nodes: readonly SkillNode[] };
@@ -139,6 +141,8 @@ export function computeMods(classId: ClassId, level: number, skills: readonly nu
   }
   // 사이드 퀘스트 영구 보상
   if (perks.includes('miner')) m.ally *= 1.25;
+  // 스토리 난이도 (계획서 M5 3번 접근성): 받는 피해 절반 — 설정이지만 피해를 바꾸므로 명령으로 들어와 리플레이·저장에 남는다
+  if (perks.includes('story')) m.taken = 0.5;
   return m;
 }
 
@@ -179,11 +183,21 @@ export function addXp(sim: Sim, amount: number) {
 
 /** 입력 명령: 1..N = N−1번 노드 배우기, 255 = 초기화(밝힌 화로 곁에서만 — 계획서: 등불에서 무료로) */
 export const CMD_RESET = 255;
+/** 스토리 난이도 켜기·끄기 (어디서나) */
+export const CMD_STORY_ON = 250;
+export const CMD_STORY_OFF = 251;
 export function applyCommand(sim: Sim, cmd: number, nearLitBrazier: boolean, npc: NpcKind | null = null) {
   const p = sim.player;
   // 대장장이 곁에서도 강화할 수 있다
   if (applyGearCommand(sim, cmd, nearLitBrazier || (npc === 'smith' && sim.forge.lit))) return; // 100..205 장비 명령
   if (applyShopCommand(sim, cmd, npc)) return; // 209..2xx 상점
+  if (cmd === CMD_STORY_ON || cmd === CMD_STORY_OFF) {
+    const on = cmd === CMD_STORY_ON;
+    if (on === p.perks.includes('story')) return;
+    p.perks = on ? [...p.perks, 'story'] : p.perks.filter((x) => x !== 'story');
+    refreshMods(sim);
+    return;
+  }
   if (cmd === CMD_RESET) {
     if (!nearLitBrazier || p.skills.length === 0) return;
     p.points += p.skills.length;
@@ -219,7 +233,7 @@ export function restoreGrowth(sim: Sim, g: { level: number; xp: number; points: 
   p.xp = Math.max(0, Math.floor(g.xp));
   p.skills = g.skills.filter((i, k, a) => Number.isInteger(i) && TREES[sim.classId].nodes[i] && a.indexOf(i) === k);
   p.points = Math.max(0, Math.floor(g.points));
-  p.perks = (g.perks ?? []).filter((x) => x === 'miner');
+  p.perks = (g.perks ?? []).filter((x) => x === 'miner' || x === 'story');
   p.mods = computeMods(sim.classId, p.level, p.skills, p.equipped, p.perks);
   p.maxHp = maxHpFor(p.level, p.mods);
   p.hp = p.maxHp;

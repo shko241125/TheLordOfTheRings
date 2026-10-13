@@ -366,6 +366,7 @@ export function hitPlayer(
     if (Math.abs(angleDiff(p.facing, toAttacker)) <= 1024) return 'parry';
   }
   if (p.action === 'dead') return 'iframe';
+  damage *= p.mods.taken;
   p.hp = Math.max(0, p.hp - damage);
   sim.events.push({ type: 'playerHit', tick: sim.tick, damage, source: opts.source ?? 'goblin' });
   // 디렉터 긴장도: 맞은 피해 비율만큼 오른다 (L4D 방식)

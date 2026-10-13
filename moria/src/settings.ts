@@ -28,11 +28,13 @@ export type Settings = {
   invertY: boolean;
   /** 색각 보정: 빨강·주황 신호(트롤 예고 고리, 금 간 기둥)를 노랑·하늘색으로 */
   colorSafe: boolean;
+  /** 스토리 난이도: 받는 피해 절반 (용암은 그대로 — 보이는 함정이다) */
+  story: boolean;
   keys: Record<Action, string>;
 };
 
 export const DEFAULTS: Settings = {
-  shake: true, pulse: 1, brightness: 1, textScale: 1, mouseSens: 1, invertY: false, colorSafe: false, keys: { ...DEFAULT_KEYS },
+  shake: true, pulse: 1, brightness: 1, textScale: 1, mouseSens: 1, invertY: false, colorSafe: false, story: false, keys: { ...DEFAULT_KEYS },
 };
 
 const KEY = 'moria.settings';
@@ -51,6 +53,7 @@ export function loadSettings(): Settings {
       mouseSens: clamp(r.mouseSens, 0.3, 3, 1),
       invertY: r.invertY === true,
       colorSafe: r.colorSafe === true,
+      story: r.story === true,
       keys,
     };
   } catch {

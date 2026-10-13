@@ -266,8 +266,8 @@ export function stepChase(sim: Sim) {
   st.z = Math.max(c.stopZ, st.z - c.speed * DT);
   // 벽에 닿으면 탄다 (몇 틱이면 쓰러진다)
   if (p.action !== 'dead' && pt.z > st.z - 0.4 && Math.abs(pt.x) < c.halfWidth) {
-    p.hp = Math.max(0, p.hp - FIRE_DPS_TICK);
-    if (sim.tick % 15 === 0 || p.hp === 0) sim.events.push({ type: 'playerHit', tick: sim.tick, damage: FIRE_DPS_TICK, source: 'fire' });
+    p.hp = Math.max(0, p.hp - FIRE_DPS_TICK * p.mods.taken);
+    if (sim.tick % 15 === 0 || p.hp === 0) sim.events.push({ type: 'playerHit', tick: sim.tick, damage: FIRE_DPS_TICK * p.mods.taken, source: 'fire' });
     if (p.hp === 0) startAction(p, 'dead');
   }
   if (pt.z < c.safeZ && p.action !== 'dead') {
