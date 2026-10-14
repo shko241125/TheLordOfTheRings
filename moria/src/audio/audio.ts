@@ -5,9 +5,13 @@ import type { DirectorPhase, SimEvent } from '../sim/types';
  *  - 북소리: 디렉터 BPM을 그대로 소리로. 저음 사인이 110 → 42Hz로 떨어지는 '둥' + 짧은 잡음 '탁'.
  *    '둥-둥' 강약 2박, 먼 북은 저역 필터로 뭉개고 가까운 북은 열어 준다. 동굴 잔향(합성 임펄스).
  *  - 저음 드론(바람·광산의 웅웅거림), 휘두르기·타격·돌의 감각 효과음.
+ *  - 공간 음향 (계획서 12장 "소리는 두 번째 시야"): 자리가 있는 사건(적의 휘두르기·경계·활·타격 등)은 HRTF 패너를 거쳐
+ *    카메라 기준 방향·거리로 들린다. 자리가 없는 사건(플레이어 피격·구매·레벨업)은 그대로 가운데.
  * 브라우저 자동재생 정책: 첫 클릭(start)에서 resume() 해야 소리가 난다.
  * 예약은 오디오 시계 기준 '앞질러 예약'(lookahead) — setTimeout 흔들림이 박자에 새지 않는다.
  */
+export type At = { x: number; y: number; z: number };
+
 export function createAudio() {
   let ctx: AudioContext | null = null;
   let master: GainNode;
@@ -111,7 +115,7 @@ export function createAudio() {
     n.stop(t + 0.1);
   }
 
-  function burst(freq: number, q: number, dur: number, gain: number, sweepTo?: number) {
+  function burst(freq: number, q: number, dur: number, gain: number, sweepTo?: number, out: AudioNode = sfx) {
     const c = ctx!;
     const t = c.currentTime;
     const n = c.createBufferSource();
@@ -124,22 +128,30 @@ export function createAudio() {
     const g = c.createGain();
     g.gain.setValueAtTime(gain, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    n.connect(f).connect(g).connect(sfx);
+    n.connect(f).connect(g).connect(out);
     n.start(t);
     n.stop(t + dur + 0.02);
   }
 
-  function tone(freq: number, dur: number, gain: number) {
+  function tone(freq: number, dur: number, gain: number, out: AudioNode = sfx, glideTo?: number) {
     const c = ctx!;
     const t = c.currentTime;
     const o = c.createOscillator();
-    o.frequency.value = freq;
+    o.frequency.setValueAtTime(freq, t);
+    if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t + dur);
     const g = c.createGain();
     g.gain.setValueAtTime(gain, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(sfx);
+    o.connect(g).connect(out);
     o.start(t);
     o.stop(t + dur + 0.02);
+  }
+
+  /** 한 사건용 패너 (소리가 끝나면 노드가 함께 버려진다). 거리 3m까지는 그대로, 그 뒤로 점점 작아진다 */
+  function place(at: At): AudioNode {
+    const p = new PannerNode(ctx!, { panningModel: 'HRTF', distanceModel: 'inverse', refDistance: 3, rolloffFactor: 1.2, positionX: at.x, positionY: at.y, positionZ: at.z });
+    p.connect(sfx);
+    return p;
   }
 
   return {
@@ -180,12 +192,54 @@ export function createAudio() {
         nextBeat += interval;
       }
     },
-    event(ev: SimEvent) {
+    /** 매 렌더 프레임: 듣는 자리 = 카메라 (위치·앞 방향) */
+    listen(px: number, py: number, pz: number, fx: number, fy: number, fz: number) {
       if (!ctx || ctx.state !== 'running') return;
-      if (ev.type === 'swing') burst(ev.actor < 0 ? 900 : 700, 1.2, 0.16, ev.actor < 0 ? 0.5 : 0.25, 2200);
+      const l = ctx.listener;
+      const t = ctx.currentTime;
+      if (l.positionX) {
+        l.positionX.setValueAtTime(px, t);
+        l.positionY.setValueAtTime(py, t);
+        l.positionZ.setValueAtTime(pz, t);
+        l.forwardX.setValueAtTime(fx, t);
+        l.forwardY.setValueAtTime(fy, t);
+        l.forwardZ.setValueAtTime(fz, t);
+      } else {
+        // Firefox 옛 판: AudioParam 대신 메서드만 있다
+        l.setPosition(px, py, pz);
+        l.setOrientation(fx, fy, fz, 0, 1, 0);
+      }
+    },
+    /** at: 사건이 난 자리 (없으면 가운데에서 들린다) */
+    event(ev: SimEvent, at?: At | null) {
+      if (!ctx || ctx.state !== 'running') return;
+      const out = at ? place(at) : sfx;
+      if (ev.type === 'swing') burst(ev.actor < 0 ? 900 : 700, 1.2, 0.16, ev.actor < 0 ? 0.5 : 0.45, 2200, out);
       else if (ev.type === 'hit') {
-        burst(180, 0.8, 0.12, 0.9);
-        tone(ev.heavy ? 70 : 95, 0.18, 0.5);
+        burst(180, 0.8, 0.12, 0.9, undefined, out);
+        tone(ev.heavy ? 70 : 95, 0.18, 0.5, out);
+      } else if (ev.type === 'alert') {
+        // 고블린이 알아챘다: 짧게 갈라지는 외침 — 어둠 속에서 어느 쪽인지 귀로 안다
+        burst(1100, 2.5, 0.28, 0.7, 600, out);
+        tone(330, 0.25, 0.18, out, 220);
+      } else if (ev.type === 'death') {
+        burst(500, 1, 0.4, 0.5, 120, out);
+        tone(180, 0.4, 0.2, out, 80);
+      } else if (ev.type === 'block' || ev.type === 'guardBreak') {
+        tone(ev.type === 'block' ? 520 : 260, 0.3, 0.3, out);
+        burst(2200, 2, 0.06, 0.5, undefined, out);
+      } else if (ev.type === 'pickup') {
+        if (ev.kind === 'gold') for (const [i, f] of [1760, 2350].entries()) setTimeout(() => tone(f, 0.18, 0.12), i * 60);
+        else if (ev.kind !== 'full') tone(ev.kind === 'mithril' ? 1480 : 660 + ev.grade * 110, 0.5, 0.15);
+      } else if (ev.type === 'gear') {
+        if (ev.what === 'drink') tone(300, 0.35, 0.25, sfx, 180); // 꿀꺽
+        else if (ev.what === 'buy') tone(1760, 0.2, 0.12);
+        else if (ev.what === 'upgrade') {
+          tone(880, 0.3, 0.3);
+          burst(2600, 3, 0.1, 0.5);
+        } else burst(1200, 1.5, 0.08, 0.3); // 장착·해제·버리기: 쇠붙이 덜컥
+      } else if (ev.type === 'levelUp' || ev.type === 'page') {
+        for (const [i, f] of (ev.type === 'levelUp' ? [392, 494, 587] : [523, 659]).entries()) setTimeout(() => tone(f, 0.9, 0.12), i * 120);
       } else if (ev.type === 'playerHit') {
         burst(120, 0.7, 0.2, 1);
         tone(60, 0.25, 0.6);
@@ -195,23 +249,23 @@ export function createAudio() {
         burst(3000, 3, 0.08, 0.4);
       } else if (ev.type === 'door') {
         // 돌문이 끌리는 낮은 울림
-        burst(70, 0.6, 2.6, 0.9, 40);
-        tone(46, 2.4, 0.35);
+        burst(70, 0.6, 2.6, 0.9, 40, out);
+        tone(46, 2.4, 0.35, out);
       } else if (ev.type === 'slam') {
         // 땅이 울린다
-        tone(38, 0.9, 0.9);
-        burst(160, 0.6, 0.7, 1, 50);
+        tone(38, 0.9, 0.9, out);
+        burst(160, 0.6, 0.7, 1, 50, out);
       } else if (ev.type === 'pillar') {
-        burst(400, 0.5, 1.8, 0.9, 80); // 돌이 무너져 내리는 소리
-        tone(52, 1.2, 0.5);
+        burst(400, 0.5, 1.8, 0.9, 80, out); // 돌이 무너져 내리는 소리
+        tone(52, 1.2, 0.5, out);
       } else if (ev.type === 'shoot') {
-        tone(640, 0.12, 0.25); // 시위 튕기는 소리
-        burst(2400, 2, 0.12, 0.35, 900);
+        tone(640, 0.12, 0.35, out); // 시위 튕기는 소리
+        burst(2400, 2, 0.12, 0.45, 900, out);
       } else if (ev.type === 'arrowStuck') {
-        burst(500, 2, 0.07, 0.4);
+        burst(500, 2, 0.07, 0.4, undefined, out);
       } else if (ev.type === 'whistle') {
-        tone(1560, 0.5, 0.18);
-        tone(1980, 0.4, 0.12);
+        tone(1560, 0.5, 0.18, out);
+        tone(1980, 0.4, 0.12, out);
       } else if (ev.type === 'crack') {
         burst(260, 1.2, 0.25, 0.7, 120); // 돌이 갈라지는 둔탁한 소리
       } else if (ev.type === 'collapse') {

@@ -34,6 +34,7 @@ import { TEST_ROOM } from './sim/level';
 import { BTN_LOCK, BTN_WORD, createSim, hashSim, stepSim } from './sim/sim';
 import { createTouch } from './core/touch';
 import { ZONES, ZONE_NAMES } from './sim/zones';
+import type { SimEvent } from './sim/types';
 import { CMD_STORY_OFF, CMD_STORY_ON, TREES, restoreGear, restoreGrowth } from './sim/growth';
 import type { ZoneId } from './sim/level';
 import { clearSave, loadSave, writeSave } from './save';
@@ -232,7 +233,15 @@ async function boot() {
   const view = new Vector3();
   const eye = new Vector3();
   const flame = new Vector3();
+  const earDir = new Vector3();
   const looseList: LooseTorch[] = [];
+  // 소리가 난 자리 (공간 음향): 사건에 좌표가 있으면 그것, 적 id가 있으면 그 적의 몸
+  const soundAt = (ev: SimEvent) => {
+    if ('x' in ev && 'y' in ev) return ev;
+    if (ev.type === 'pillar') return { x: ev.x, y: sim.player.body.translation().y, z: ev.z };
+    const id = 'enemy' in ev ? ev.enemy : ev.type === 'swing' && ev.actor >= 0 ? ev.actor : -1;
+    return id >= 0 ? (sim.enemies.find((e) => e.id === id)?.body.translation() ?? null) : null;
+  };
   const impostors: Impostor[] = [];
 
   start.addEventListener('click', () => {
@@ -514,7 +523,7 @@ async function boot() {
       trolls.onEvent(ev);
       collapseView.onEvent(ev);
       balrogView.onEvent(ev);
-      audio.event(ev);
+      audio.event(ev, soundAt(ev));
       if (ev.type === 'rest') {
         const saved = saveNow();
         hud.toast(`${ev.first ? '화로가 타오른다' : '불 곁에서 쉬었다'}${saved ? ' · 저장됨' : ''}`, 1.6);
@@ -760,6 +769,8 @@ async function boot() {
     minimap?.visit(room);
     minimap?.draw(sim, view.x, view.z, input.view.yaw);
     const visibleRooms = gs.cull(follow.camera, view);
+    follow.camera.getWorldDirection(earDir);
+    audio.listen(follow.camera.position.x, follow.camera.position.y, follow.camera.position.z, earDir.x, earDir.y, earDir.z);
     post.render();
     dev?.update();
 
