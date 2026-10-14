@@ -110,9 +110,15 @@ export function loadSave(): SaveData | null {
   }
 }
 
+let persistAsked = false;
 export function writeSave(data: Omit<SaveData, 'v'>): boolean {
   try {
     localStorage.setItem(KEY, JSON.stringify({ v: SAVE_VERSION, ...data } satisfies SaveData));
+    // 처음 저장할 때 한 번, 브라우저가 저장소를 임의로 비우지 않게 요청한다 (계획서 12장). 거절돼도 저장은 그대로 된다
+    if (!persistAsked) {
+      persistAsked = true;
+      void navigator.storage?.persist?.().catch(() => {});
+    }
     return true;
   } catch {
     return false;
@@ -125,4 +131,24 @@ export function clearSave() {
   } catch {
     /* 저장소 없음 */
   }
+}
+
+/** 지금 저장의 원문 (내보내기용). 없으면 null */
+export function exportSave(): string | null {
+  try {
+    return localStorage.getItem(KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** 내보낸 파일로 저장을 덮어쓴다. 옛 버전이면 올리고, 모양이 틀리면 쓰지 않고 false */
+export function importSave(text: string): boolean {
+  let data: SaveData | null;
+  try {
+    data = migrate(JSON.parse(text));
+  } catch {
+    return false;
+  }
+  return !!data && writeSave(data);
 }

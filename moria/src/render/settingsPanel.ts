@@ -1,8 +1,10 @@
+import { exportSave, importSave } from '../save';
 import { ACTION_NAMES, DEFAULT_KEYS, type Action, type Settings } from '../settings';
 
 /**
  * 설정 창 (일시정지 화면 = 시작 화면 안). 값이 바뀔 때마다 onChange로 알린다 — main이 적용하고 저장한다.
  * 키 배치: '바꾸기'를 누른 뒤 다음 키가 그 동작이 된다 (Esc = 취소). 이미 다른 동작에 쓰인 키면 서로 맞바꾼다.
+ * 저장 내보내기·가져오기 (계획서 12장): 브라우저 데이터를 지워도 파일로 되살린다. 가져오면 지금 저장을 덮어쓰고 다시 부팅한다.
  */
 export function createSettingsPanel(host: HTMLElement, initial: Settings, onChange: (s: Settings) => void) {
   const style = document.createElement('style');
@@ -54,6 +56,7 @@ export function createSettingsPanel(host: HTMLElement, initial: Settings, onChan
       <div class="keys">${(Object.keys(ACTION_NAMES) as Action[])
         .map((a) => `<span>${ACTION_NAMES[a]}</span><button data-a="${a}" class="${waiting === a ? 'wait' : ''}">${waiting === a ? '키를 누르세요' : keyName(s.keys[a])}</button>`)
         .join('')}</div>
+      <div class="row"><button data-export>저장 내보내기</button><button data-import>저장 가져오기</button></div>
       <div class="row"><button data-reset>기본값으로</button><button data-close>닫기</button></div>`;
     panel.querySelectorAll<HTMLInputElement>('input').forEach((el) =>
       el.addEventListener('input', () => {
@@ -72,6 +75,23 @@ export function createSettingsPanel(host: HTMLElement, initial: Settings, onChan
       s = { ...s, keys: { ...DEFAULT_KEYS } };
       onChange(s);
       render();
+    });
+    panel.querySelector('[data-export]')!.addEventListener('click', () => {
+      const text = exportSave();
+      if (!text) return alert('아직 저장이 없다 (화로에서 쉬면 저장된다).');
+      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([text], { type: 'application/json' })), download: 'moria-save.json' });
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+    panel.querySelector('[data-import]')!.addEventListener('click', () => {
+      const file = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json' });
+      file.addEventListener('change', async () => {
+        const text = await file.files?.[0]?.text();
+        if (!text || (exportSave() && !confirm('지금 저장을 이 파일로 덮어쓴다. 계속할까?'))) return;
+        if (!importSave(text)) return alert('모리아의 저장 파일이 아니거나 손상되었다.');
+        location.href = location.pathname; // 가져온 저장으로 다시 부팅 (?new=1 같은 주소 인자는 뺀다)
+      });
+      file.click();
     });
     panel.querySelector('[data-close]')!.addEventListener('click', () => (panel.style.display = 'none'));
   }
