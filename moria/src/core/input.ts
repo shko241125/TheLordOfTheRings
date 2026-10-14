@@ -1,6 +1,6 @@
 import { radToAngle } from './trig';
 import {
-  BTN_CALL, BTN_CROUCH, BTN_DODGE, BTN_HEAVY, BTN_INTERACT, BTN_LIGHT, BTN_LOCK, BTN_PARRY, BTN_SENSE, BTN_SPRINT, BTN_THROW, BTN_TORCH, type InputFrame,
+  BTN_CALL, BTN_CROUCH, BTN_DODGE, BTN_DRINK, BTN_HEAVY, BTN_INTERACT, BTN_LIGHT, BTN_LOCK, BTN_PARRY, BTN_SENSE, BTN_SPRINT, BTN_THROW, BTN_TORCH, type InputFrame,
 } from '../sim/types';
 import { DEFAULT_KEYS, type Action } from '../settings';
 import type { TouchControls } from './touch';
@@ -96,6 +96,7 @@ export function createInput(target: HTMLElement) {
     if (e.code === bind.sense) pulses |= BTN_SENSE;
     if (e.code === bind.interact) pulses |= BTN_INTERACT;
     if (e.code === bind.call) pulses |= BTN_CALL;
+    if (e.code === bind.drink) pulses |= BTN_DRINK;
   };
   const onUp = (e: KeyboardEvent) => {
     keys.delete(e.code);
@@ -149,7 +150,7 @@ export function createInput(target: HTMLElement) {
       padPrev.set(i, now2);
       return now2 && !was;
     };
-    // standard 매핑: 0 A, 1 B, 2 X, 3 Y, 4 LB, 5 RB, 10 L3, 11 R3, 12 십자키 위
+    // standard 매핑: 0 A, 1 B, 2 X, 3 Y, 4 LB, 5 RB, 10 L3, 11 R3, 12 십자키 위, 13 아래, 14 왼쪽
     if (pressed(1)) padB.down(now);
     else if (padB.up(now)) pulses |= BTN_DODGE;
     if (pressed(12)) padUp.down(now);
@@ -158,6 +159,7 @@ export function createInput(target: HTMLElement) {
     if (edge(11)) pulses |= BTN_LOCK;
     if (edge(13)) pulses |= BTN_SENSE; // 십자키 아래
     if (edge(0)) pulses |= BTN_INTERACT; // A
+    if (edge(14)) pulses |= BTN_DRINK; // 십자키 왼쪽
     // LT + RT 함께: 둘 중 늦게 눌린 쪽의 순간에 한 번
     const both = pressed(6) && pressed(7);
     if (both && !(padPrev.get(-1) ?? false)) pulses |= BTN_CALL;

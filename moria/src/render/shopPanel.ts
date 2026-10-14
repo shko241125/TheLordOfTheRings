@@ -41,7 +41,7 @@ export function createShopPanel(host: HTMLElement, sim: Sim, send: (cmd: number)
       .join('');
     const smithLine = who.kind === 'smith' ? '<small style="display:block;margin-top:6px;color:#9a8f7a">대장장이 곁에서는 장비 창(I)에서 강화도 할 수 있다.</small>' : '';
     panel.innerHTML = `<h3>${who.name}</h3><div class="sub">${GREET[who.kind]}</div>
-      <div style="margin-bottom:8px">금화 ${p.gold} · 미스릴 ${p.mithril} · 예비 횃불 ${p.spareTorches}</div>${rows}${smithLine}
+      <div style="margin-bottom:8px">금화 ${p.gold} · 미스릴 ${p.mithril} · 예비 횃불 ${p.spareTorches} · 치유 약초 ${p.draughts}</div>${rows}${smithLine}
       <div style="text-align:right;margin-top:10px"><button data-close>닫기 (E)</button></div>`;
     panel.querySelectorAll<HTMLButtonElement>('button[data-cmd]').forEach((b) => b.addEventListener('click', () => send(Number(b.dataset.cmd))));
     panel.querySelector('[data-close]')!.addEventListener('click', () => api.close());

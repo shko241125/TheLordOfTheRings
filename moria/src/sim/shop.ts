@@ -4,7 +4,7 @@ import type { Sim } from './types';
 /**
  * 상점과 대장장이 (계획서 8장 NPC — 레벨 2 상호작용: 대화 = 상점 열기).
  * 사고파는 것도 입력 명령(InputFrame.cmd = 210 + 물건 번호)이라 리플레이가 재현한다. 시뮬레이션이 '그 NPC 곁인가'를 다시 확인한다.
- *   상인: 예비 횃불(최대 4), 미스릴, 장비 꾸러미(정교 이상 하나).
+ *   상인: 예비 횃불(최대 4), 미스릴, 장비 꾸러미(정교 이상 하나), 치유 약초(최대 3 — 맨 뒤에 붙여 옛 리플레이의 명령 번호를 지킨다).
  *   대장장이(구역 4 모루가 타오른 뒤): 전설 무기 '두린의 도끼' 제작 — 미스릴 6 + 금화 150, 한 번.
  *   책을 모두 모으면(12조각) 화면이 CMD_BOOK을 보내 '발린의 인장'을 받는다 (조각은 구역마다 흩어져 있어 시뮬레이션 하나는 전체 수를 모른다).
  */
@@ -12,6 +12,9 @@ export type NpcKind = 'merchant' | 'smith';
 export const CMD_BUY = 210;
 export const CMD_BOOK = 209;
 export const MAX_SPARE = 4;
+export const MAX_DRAUGHTS = 3;
+/** 약초 한 번에 차는 체력 (최대 체력 100 기준) */
+export const DRAUGHT_HEAL = 40;
 
 export type Offer = { npc: NpcKind; name: string; desc: string; gold: number; mithril: number };
 export const OFFERS: readonly Offer[] = [
@@ -19,6 +22,7 @@ export const OFFERS: readonly Offer[] = [
   { npc: 'merchant', name: '미스릴 한 덩이', desc: '강화·제작 재료', gold: 60, mithril: 0 },
   { npc: 'merchant', name: '장비 꾸러미', desc: '정교 이상 장비 하나 (무엇이 들었는지는 열어 봐야 안다)', gold: 90, mithril: 0 },
   { npc: 'smith', name: '두린의 도끼 제작', desc: '전설 무기 — 피해 +30%, 강공격 +25% (한 번만)', gold: 150, mithril: 6 },
+  { npc: 'merchant', name: '치유 약초', desc: `먹으면 체력 +${DRAUGHT_HEAL} (최대 ${MAX_DRAUGHTS}, 화로에서 채워지지 않는다)`, gold: 25, mithril: 0 },
 ];
 
 const owns = (sim: Sim, legendary: number) =>
@@ -32,6 +36,7 @@ export function cannotBuy(sim: Sim, k: number): string | null {
   if (p.gold < o.gold || p.mithril < o.mithril) return '값이 모자란다';
   if (k === 0 && p.spareTorches >= MAX_SPARE) return '더 들 수 없다';
   if ((k === 2 || k === 3) && p.inventory.length >= INVENTORY_SIZE) return '가방이 가득 찼다';
+  if (k === 4 && p.draughts >= MAX_DRAUGHTS) return '더 들 수 없다';
   if (k === 3 && owns(sim, LEGEND_AXE)) return '이미 만들었다';
   if (o.npc === 'smith' && !sim.forge.lit) return '모루가 식어 있다';
   return null;
@@ -60,7 +65,20 @@ export function applyShopCommand(sim: Sim, cmd: number, npc: NpcKind | null): bo
   if (k === 0) p.spareTorches++;
   else if (k === 1) p.mithril++;
   else if (k === 2) give(sim, rollItem(sim.rng, sim.nextItemId++, 0, 1));
+  else if (k === 4) p.draughts++;
   else give(sim, { id: sim.nextItemId++, slot: 'weapon', grade: 4, name: '두린의 도끼', affixes: [], legendary: LEGEND_AXE, upgrade: 0 });
   sim.events.push({ type: 'gear', tick: sim.tick, what: 'buy', name: o.name });
   return true;
+}
+
+/**
+ * 치유 약초 (R): 자유로운 상태(공격·회피·막기·비틀림 중이 아님)에서만, 체력이 덜 찼을 때만 하나 쓴다.
+ * ponytail: 즉시 회복이라 먹는 틈(소울류의 마시는 동작)이 없다 — 너무 쉬우면 'drink' 행동(짧은 경직)을 더한다
+ */
+export function drinkDraught(sim: Sim) {
+  const p = sim.player;
+  if (p.draughts <= 0 || p.action !== 'free' || p.hp <= 0 || p.hp >= p.maxHp) return;
+  p.draughts--;
+  p.hp = Math.min(p.maxHp, p.hp + DRAUGHT_HEAL);
+  sim.events.push({ type: 'gear', tick: sim.tick, what: 'drink', name: '치유 약초' });
 }

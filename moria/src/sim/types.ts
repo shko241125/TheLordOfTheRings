@@ -35,6 +35,7 @@ export const BTN_INTERACT = 1 << 10; // E: 화로 밝히기·쉬기
 /** 두린의 문 암호가 맞았다 (수수께끼 UI가 판정해 한 틱 켠다 — 입력으로 기록되므로 리플레이가 재현한다) */
 export const BTN_WORD = 1 << 11;
 export const BTN_CALL = 1 << 12; // Q: 동료 호출
+export const BTN_DRINK = 1 << 13; // R: 치유 약초
 
 export type ActionKind = 'free' | 'attack' | 'dodge' | 'parry' | 'stagger' | 'dead';
 
@@ -101,6 +102,8 @@ export type PlayerState = Mover & {
   dodgeDirZ: number;
   heldTorch: number;
   spareTorches: number;
+  /** 들고 있는 치유 약초 (상인에게 산다, 저장에 남는다) */
+  draughts: number;
   /** 돌의 감각을 다시 쓸 수 있는 틱 */
   senseReadyAt: number;
   /** 동료 호출 게이지 0..100 */
@@ -236,7 +239,7 @@ export type SimEvent =
   | { type: 'lamp'; tick: number; index: number; allLit: boolean }
   | { type: 'shoot'; tick: number; enemy: number }
   | { type: 'pickup'; tick: number; kind: 'item' | 'gold' | 'mithril' | 'full'; amount: number; name: string; grade: number }
-  | { type: 'gear'; tick: number; what: 'equip' | 'unequip' | 'drop' | 'upgrade' | 'buy'; name: string }
+  | { type: 'gear'; tick: number; what: 'equip' | 'unequip' | 'drop' | 'upgrade' | 'buy' | 'drink'; name: string }
   | { type: 'arrowStuck'; tick: number; x: number; y: number; z: number }
   | { type: 'whistle'; tick: number; enemy: number }
   | { type: 'exit'; tick: number; to: string; entry: string }

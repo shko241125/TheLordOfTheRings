@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineConfig } from 'vitest/config';
-import { lorePlugin } from './scripts/lore';
+import { lorePlugin } from './scripts/lore.ts';
 
 /**
  * 시뮬레이션 버전 = src/sim·src/core 파일 내용의 해시. 리플레이는 이 값이 같을 때만 재생한다

@@ -1,5 +1,5 @@
 import {
-  BTN_CALL, BTN_DODGE, BTN_HEAVY, BTN_INTERACT, BTN_LIGHT, BTN_LOCK, BTN_PARRY, BTN_SENSE, BTN_SPRINT, BTN_THROW, BTN_TORCH,
+  BTN_CALL, BTN_DODGE, BTN_DRINK, BTN_HEAVY, BTN_INTERACT, BTN_LIGHT, BTN_LOCK, BTN_PARRY, BTN_SENSE, BTN_SPRINT, BTN_THROW, BTN_TORCH,
 } from '../sim/types';
 
 /**
@@ -29,6 +29,7 @@ const BUTTONS: Btn[] = [
   { id: 'lock', label: '락온', bit: BTN_LOCK, kind: 'pulse', x: 235, y: 135, r: 24 },
   { id: 'interact', label: 'E', bit: BTN_INTERACT, kind: 'pulse', x: 255, y: 205, r: 26 },
   { id: 'call', label: '동료', bit: BTN_CALL, kind: 'pulse', x: 60, y: 295, r: 26 },
+  { id: 'drink', label: '약초', bit: BTN_DRINK, kind: 'pulse', x: 145, y: 305, r: 24 },
 ];
 
 export type TouchControls = ReturnType<typeof createTouch>;

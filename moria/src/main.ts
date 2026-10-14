@@ -146,7 +146,7 @@ async function boot() {
   /** 주운 책 조각 (모든 구역) */
   const pagesAll = new Set(save?.pages ?? []);
   const growthOf = () => ({ level: sim.player.level, xp: sim.player.xp, points: sim.player.points, skills: [...sim.player.skills], ...(sim.player.perks.length ? { perks: [...sim.player.perks] } : {}) });
-  const gearOf = () => ({ inventory: sim.player.inventory, equipped: sim.player.equipped, gold: sim.player.gold, mithril: sim.player.mithril });
+  const gearOf = () => ({ inventory: sim.player.inventory, equipped: sim.player.equipped, gold: sim.player.gold, mithril: sim.player.mithril, draughts: sim.player.draughts });
   /** 저장: 이 구역 진행 상태 + 성장. 구역을 옮길 때는 옮겨 갈 구역·입구를 준다 */
   const saveNow = (zone: ZoneId = zoneId, entry: string | null = save?.entry ?? null) => {
     if (noSave) return false;
@@ -190,7 +190,7 @@ async function boot() {
   );
   const keyName = (c: string) => c.replace(/^Key/, '').replace('ShiftLeft', 'Shift');
   const k = settings.keys;
-  start.innerHTML = `클릭해서 모리아로 들어가기<small>${keyName(k.forward)}${keyName(k.left)}${keyName(k.back)}${keyName(k.right)} 이동 · 좌클릭 공격 · 우클릭(누르기) 강공격 · ${keyName(k.dodge)} 회피(길게: 질주) · ${keyName(k.parry)} 패링<br>휠 클릭 락온 · ${keyName(k.torch)} 횃불(길게: 던지기) · ${keyName(k.sense)} 돌의 감각 · ${keyName(k.interact)} 상호작용 · ${keyName(k.call)} 동료 · ${keyName(k.crouch)} 웅크리기 · Esc 일시정지·설정 (게임패드 지원)</small>`;
+  start.innerHTML = `클릭해서 모리아로 들어가기<small>${keyName(k.forward)}${keyName(k.left)}${keyName(k.back)}${keyName(k.right)} 이동 · 좌클릭 공격 · 우클릭(누르기) 강공격 · ${keyName(k.dodge)} 회피(길게: 질주) · ${keyName(k.parry)} 패링<br>휠 클릭 락온 · ${keyName(k.torch)} 횃불(길게: 던지기) · ${keyName(k.sense)} 돌의 감각 · ${keyName(k.interact)} 상호작용 · ${keyName(k.call)} 동료 · ${keyName(k.drink)} 약초 · ${keyName(k.crouch)} 웅크리기 · Esc 일시정지·설정 (게임패드 지원)</small>`;
   if (replay) start.innerHTML = `마자르불의 책<small>“${replay.header.line.replace(/</g, '&lt;')}”<br>클릭해서 마지막 60초 보기 · Space 0.25× 슬로우 · 마우스로 카메라</small>`;
   if (save) start.insertAdjacentHTML('beforeend', '<small>이어하기: 마지막으로 쉰 화로에서 · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>');
   const loop = createFixedStep();
@@ -355,7 +355,7 @@ async function boot() {
     input.attachTouch(touch);
     touch.onPause = () => (start.style.display = 'grid');
     start.addEventListener('click', () => (start.style.display = 'none'));
-    start.querySelector('small')?.replaceChildren('왼쪽을 끌어 이동 · 오른쪽을 끌어 카메라 · 버튼: 공격(누르고 있으면 연타) · 강(누르고 있다 떼기) · 회피(길게: 질주) · 막기 · 횃불(길게: 던지기) · 감각 · 락온 · E · 동료 — 적이 가까우면 자동 락온');
+    start.querySelector('small')?.replaceChildren('왼쪽을 끌어 이동 · 오른쪽을 끌어 카메라 · 버튼: 공격(누르고 있으면 연타) · 강(누르고 있다 떼기) · 회피(길게: 질주) · 막기 · 횃불(길게: 던지기) · 감각 · 락온 · E · 동료 · 약초 — 적이 가까우면 자동 락온');
     start.firstChild!.textContent = '탭해서 모리아로 들어가기';
   }
   let autoLockAt = 0;
@@ -523,7 +523,7 @@ async function boot() {
         else if (ev.kind === 'full') hud.toast('가방이 가득 찼다 (I에서 버리기)', 1.8);
         else hud.toast(ev.kind === 'gold' ? `금화 +${ev.amount}` : `미스릴 +${ev.amount}`, 1);
       } else if (ev.type === 'gear') {
-        hud.toast({ equip: '장착', unequip: '해제', drop: '버렸다', upgrade: '강화', buy: '샀다' }[ev.what] + `: ${ev.name}`, 1.4);
+        hud.toast({ equip: '장착', unequip: '해제', drop: '버렸다', upgrade: '강화', buy: '샀다', drink: '먹었다' }[ev.what] + `: ${ev.name}`, 1.4);
       }
       if (ev.type === 'levelUp') hud.toast(`레벨 ${ev.level} — 스킬 포인트 +1 (Tab)`, 2.2);
       if (ev.type === 'skill') hud.toast(ev.index < 0 ? '스킬을 모두 되돌렸다' : `배웠다: ${TREES[classId].nodes[ev.index]!.name}`, 1.6);

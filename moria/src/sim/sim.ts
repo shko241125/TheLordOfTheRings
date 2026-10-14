@@ -25,7 +25,8 @@ import { lavaLights, stepForge } from './forge';
 import { balrogArmor, stepChase } from './balrog';
 import { createEscort, stepEscort } from './escort';
 import { giveStartingTorch, updateTorches } from './torch';
-import { BTN_CALL, BTN_DODGE, BTN_LIGHT, G_CHAR, G_LEVEL, groups, type InputFrame, type Sim, type SimLight, type V3 } from './types';
+import { drinkDraught } from './shop';
+import { BTN_CALL, BTN_DODGE, BTN_DRINK, BTN_LIGHT, G_CHAR, G_LEVEL, groups, type InputFrame, type Sim, type SimLight, type V3 } from './types';
 
 export * from './types';
 
@@ -92,7 +93,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
       action: 'free', actionTick: 0, attack: null, combo: 0, comboQueued: false,
       heavyCharge: 0, charging: false, hitSet: new Set(), buffer: null, prevButtons: 0,
       lockTarget: -1, riposteUntil: -1, dodgeDirX: 0, dodgeDirZ: 0,
-      heldTorch: -1, spareTorches: 2, senseReadyAt: 0, companion: 0,
+      heldTorch: -1, spareTorches: 2, draughts: 0, senseReadyAt: 0, companion: 0,
       level: 1, xp: 0, points: 0, skills: [], mods: { ...BASE_MODS },
       inventory: [], equipped: [null, null, null, null, null, null], gold: 0, mithril: 0, darkness: 0, pushX: 0, pushZ: 0, perks: [],
     },
@@ -233,6 +234,7 @@ export function stepSim(sim: Sim, input: InputFrame): void {
   stepInteract(sim, pressed);
   stepExits(sim);
   if ((pressed & BTN_CALL) !== 0) callCompanion(sim, sim.classId);
+  if ((pressed & BTN_DRINK) !== 0) drinkDraught(sim);
   resolvePlayerAttack(sim, lights);
   stepEnemies(sim, lights);
   stepHorde(sim, lights);
@@ -288,6 +290,7 @@ export function hashSim(sim: Sim): number {
   }
   for (const p of sim.pillars) h = mix(h, p.body ? 1 : 0);
   if (p.pushX || p.pushZ) h = mix(h, p.pushX, p.pushZ);
+  if (p.draughts) h = mix(h, p.draughts); // 0이면 섞지 않는다 (약초가 생기기 전의 골든 해시 유지)
   if (sim.escort.state !== 'waiting') h = mix(h, ['waiting', 'following', 'saved', 'dead'].indexOf(sim.escort.state), sim.escort.x, sim.escort.z, sim.escort.hp);
   if (p.perks.length) h = mix(h, p.perks.length);
   if (sim.chase.state !== 'idle') h = mix(h, ['idle', 'run', 'done'].indexOf(sim.chase.state), sim.chase.z);

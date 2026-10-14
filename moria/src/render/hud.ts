@@ -129,7 +129,7 @@ export function createHud() {
       const senseLeft = Math.max(0, p.senseReadyAt - sim.tick);
       const ally = p.companion >= 100 ? '준비 (Q)' : `${Math.floor(p.companion)}%`;
       level.textContent = `Lv ${p.level} · XP ${Math.floor(p.xp)}/${xpToNext(p.level)}${p.points ? ` · 스킬 포인트 ${p.points} (Tab)` : ''}`;
-      torch.textContent = `횃불 ${p.heldTorch >= 0 ? '들고 있음' : '없음'} · 예비 ${p.spareTorches} · 돌의 감각 ${senseLeft > 0 ? `${Math.ceil(senseLeft / 60)}초` : '준비'} · 동료 ${ally}`;
+      torch.textContent = `횃불 ${p.heldTorch >= 0 ? '들고 있음' : '없음'} · 예비 ${p.spareTorches} · 약초 ${p.draughts} · 돌의 감각 ${senseLeft > 0 ? `${Math.ceil(senseLeft / 60)}초` : '준비'} · 동료 ${ally}`;
       state.textContent = sim.tick < p.riposteUntil ? '반격!' : '';
       if (lockScreen) {
         lock.style.display = 'block';

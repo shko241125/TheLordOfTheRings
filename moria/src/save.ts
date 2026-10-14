@@ -1,4 +1,5 @@
 import type { ClassId } from './sim/classes';
+import { MAX_DRAUGHTS } from './sim/shop';
 import type { Progress } from './sim/interact';
 import type { ZoneId } from './sim/level';
 import type { Item } from './sim/items';
@@ -15,7 +16,8 @@ export const SAVE_VERSION = 5;
 
 /** perks: 사이드 퀘스트 영구 보상 (v5 안의 선택 필드 — 없으면 빈 목록) */
 export type Growth = { level: number; xp: number; points: number; skills: number[]; perks?: string[] };
-export type Gear = { inventory: Item[]; equipped: (Item | null)[]; gold: number; mithril: number };
+/** draughts: 치유 약초 (v5 안의 선택 필드 — 없으면 0) */
+export type Gear = { inventory: Item[]; equipped: (Item | null)[]; gold: number; mithril: number; draughts?: number };
 const EMPTY_GEAR: Gear = { inventory: [], equipped: [null, null, null, null, null, null], gold: 0, mithril: 0 };
 export type SaveData = {
   v: typeof SAVE_VERSION;
@@ -50,7 +52,8 @@ function validGear(x: unknown): Gear | null {
   const inventory = r.inventory.map(validItem);
   const equipped = raw.map((e) => (e === null ? null : validItem(e)));
   if (inventory.some((i) => !i) || equipped.some((e, k) => e === null && raw[k] !== null)) return null;
-  return { inventory: inventory as Item[], equipped, gold: r.gold as number, mithril: r.mithril as number };
+  const draughts = Number.isInteger(r.draughts) ? Math.min(MAX_DRAUGHTS, Math.max(0, r.draughts as number)) : 0;
+  return { inventory: inventory as Item[], equipped, gold: r.gold as number, mithril: r.mithril as number, ...(draughts ? { draughts } : {}) };
 }
 
 const ints = (x: unknown): x is number[] => Array.isArray(x) && x.every((n) => Number.isInteger(n));

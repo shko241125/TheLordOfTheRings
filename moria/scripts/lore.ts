@@ -1,5 +1,5 @@
 import type { Plugin } from 'vite';
-import lore from '../data/lore.json';
+import lore from '../data/lore.json' with { type: 'json' };
 
 /** 이름표대로 한 번에 바꾼다. 긴 이름부터 맞춰서 '두린의 재앙'이 '두린'보다 먼저 잡히고, 바뀐 결과를 다시 바꾸지 않는다 */
 export function loreSwap(names: Record<string, string>): (s: string) => string {

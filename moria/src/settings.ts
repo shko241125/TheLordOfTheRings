@@ -2,16 +2,16 @@
  * 설정·접근성 (계획서 M5 3번). 브라우저에 저장하고, 막힌 환경(시크릿 창 등)에서는 기본값으로 돈다.
  * 시뮬레이션 규칙은 바꾸지 않는다 — 모두 보이는 것·조작 해석만 바꾼다 (리플레이 결정성과 무관).
  */
-export type Action = 'forward' | 'back' | 'left' | 'right' | 'dodge' | 'parry' | 'crouch' | 'torch' | 'sense' | 'interact' | 'call';
+export type Action = 'forward' | 'back' | 'left' | 'right' | 'dodge' | 'parry' | 'crouch' | 'torch' | 'sense' | 'interact' | 'call' | 'drink';
 
 export const ACTION_NAMES: Record<Action, string> = {
   forward: '앞으로', back: '뒤로', left: '왼쪽', right: '오른쪽', dodge: '회피 / 질주(길게)', parry: '패링',
-  crouch: '웅크리기', torch: '횃불 (길게: 던지기)', sense: '돌의 감각', interact: '상호작용', call: '동료 호출',
+  crouch: '웅크리기', torch: '횃불 (길게: 던지기)', sense: '돌의 감각', interact: '상호작용', call: '동료 호출', drink: '치유 약초',
 };
 
 export const DEFAULT_KEYS: Record<Action, string> = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', dodge: 'Space', parry: 'ShiftLeft',
-  crouch: 'KeyC', torch: 'KeyF', sense: 'KeyV', interact: 'KeyE', call: 'KeyQ',
+  crouch: 'KeyC', torch: 'KeyF', sense: 'KeyV', interact: 'KeyE', call: 'KeyQ', drink: 'KeyR',
 };
 
 export type Settings = {

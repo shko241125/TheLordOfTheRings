@@ -215,12 +215,13 @@ export function applyCommand(sim: Sim, cmd: number, nearLitBrazier: boolean, npc
 }
 
 /** 저장에서 장비 복원 (첫 틱 전, restoreGrowth보다 먼저 — 최대 체력 계산에 장비가 들어간다) */
-export function restoreGear(sim: Sim, g: { inventory: Item[]; equipped: (Item | null)[]; gold: number; mithril: number }) {
+export function restoreGear(sim: Sim, g: { inventory: Item[]; equipped: (Item | null)[]; gold: number; mithril: number; draughts?: number }) {
   const p = sim.player;
   p.inventory = g.inventory.map((i) => ({ ...i }));
   p.equipped = g.equipped.map((i) => (i ? { ...i } : null));
   p.gold = Math.max(0, g.gold);
   p.mithril = Math.max(0, g.mithril);
+  p.draughts = Math.max(0, g.draughts ?? 0);
   // 새 아이템 번호가 저장된 것과 겹치지 않게
   const ids = [...p.inventory, ...p.equipped].flatMap((i) => (i ? [i.id] : []));
   sim.nextItemId = Math.max(sim.nextItemId, ...ids.map((i) => i + 1), 0);
