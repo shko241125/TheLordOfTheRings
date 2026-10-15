@@ -14,6 +14,9 @@ import { createDurinUI } from './render/durin';
 import { createCollapseView } from './render/collapse';
 import { createArrowView } from './render/arrows';
 import { TROLL_HP } from './sim/troll';
+import { GOBLIN_HP } from './sim/enemy';
+import { ARCHER_HP } from './sim/archer';
+import { URUK_HP } from './sim/uruk';
 import { CAPTAIN_HP } from './sim/captain';
 import { BALROG_HP } from './sim/balrog';
 import { createBalrogView } from './render/balrog';
@@ -378,6 +381,11 @@ async function boot() {
   /** 보스 체력바: 깨어 있는 보스 하나 (트롤·대장) */
   const BOSS_NAME: Record<string, string> = { troll: '동굴 트롤', captain: '고블린 대장' };
   const BOSS_MAX: Record<string, number> = { troll: TROLL_HP, captain: CAPTAIN_HP, balrog: BALROG_HP };
+  // 일반 적 최대 체력 (락온 체력바·피해 숫자용 — 시뮬레이션의 표를 공개하면 시뮬레이션 버전이 바뀌어 옛 리플레이가 깨진다)
+  const ENEMY_MAX: Record<string, number> = { ...BOSS_MAX, goblin: GOBLIN_HP, archer: ARCHER_HP, uruk: URUK_HP };
+  // 피해 숫자: 사건에 피해량이 없어, 적 체력이 지난 프레임보다 줄어든 만큼으로 센다
+  const lastEnemyHp = new Map<number, number>();
+  const toScreen = new Vector3();
   // 보스바 눈금 = 페이즈가 바뀌는 체력 비율 (대장: 50%에 휘파람 증원, 발로그: 40% 3페이즈 · 10% 끝 장면)
   const BOSS_MARKS: Record<string, readonly number[]> = { captain: [0.5], balrog: [0.4, 0.1] };
   /** 보스 이름: 레벨이 정한 이름(우루크 대장) 또는 종류 이름 */
@@ -526,6 +534,15 @@ async function boot() {
       collapseView.onEvent(ev);
       balrogView.onEvent(ev);
       audio.event(ev, soundAt(ev));
+      if (ev.type === 'hit' && ev.target >= 0 && !replay) {
+        const e = sim.enemies.find((x) => x.id === ev.target);
+        const before = lastEnemyHp.get(ev.target) ?? (e ? ENEMY_MAX[e.kind] : undefined);
+        if (e && before !== undefined && before > e.hp) {
+          lastEnemyHp.set(e.id, e.hp);
+          toScreen.set(ev.x, ev.y + 0.6, ev.z).project(follow.camera);
+          if (toScreen.z < 1) hud.damage(((toScreen.x + 1) / 2) * innerWidth, ((1 - toScreen.y) / 2) * innerHeight, before - e.hp, ev.heavy);
+        }
+      }
       if (ev.type === 'rest') {
         const saved = saveNow();
         hud.toast(`${ev.first ? '화로가 타오른다' : '불 곁에서 쉬었다'}${saved ? ' · 저장됨' : ''}`, 1.6);
@@ -762,7 +779,9 @@ async function boot() {
       const g = mainStatus(sim);
       hud.goal(g ? `목표 · ${g.quest.title}` : '', g ? g.text : '');
     }
-    hud.update(dt, sim, lockT ? (goblins.screenPos(lockT.id, follow.camera) ?? trolls.screenPos(lockT.id, follow.camera)) : null);
+    for (const e of sim.enemies) lastEnemyHp.set(e.id, e.hp);
+    const lockFrac = lockT && !BOSS_MAX[lockT.kind] && lockT.ai !== 'dead' ? lockT.hp / ENEMY_MAX[lockT.kind]! : null;
+    hud.update(dt, sim, lockT ? (goblins.screenPos(lockT.id, follow.camera) ?? trolls.screenPos(lockT.id, follow.camera)) : null, lockFrac);
     const target = nearestInteractable(sim);
     hud.prompt(target, durin.isOpen || sim.player.action !== 'free' || !!replay);
     const hint = durin.update(dt, target?.kind === 'door');

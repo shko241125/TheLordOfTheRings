@@ -10,6 +10,7 @@ import { GRADE_COLORS, GRADE_NAMES } from '../sim/items';
  *  - 지연 체력바: 맞으면 줄어든 만큼 흰 띠가 0.5초 남았다가 천천히 따라 줄어든다 (플레이어·보스).
  *  - 비전투 5초가 지나면 좌하단 막대가 흐려진다 (opacity 0.3). 체력이 35% 아래면 늘 또렷하게.
  *  - 보스바 눈금: 페이즈가 바뀌는 체력 지점.
+ *  - 월드 안: 락온한 적의 작은 체력바(보스는 위쪽 보스바), 피해 숫자 (노드 8개를 돌려 쓴다 — DOM이 늘지 않는다).
  * 게임 로직은 DOM을 만지지 않는다 — 여기서 시뮬레이션 상태를 읽기만 한다.
  */
 export function createHud() {
@@ -38,6 +39,10 @@ export function createHud() {
     #page { position: fixed; left: 50%; bottom: 30%; transform: translateX(-50%); max-width: min(560px, 88vw); padding: 12px 18px; background: rgba(30,22,12,.82); border: 1px solid rgba(203,189,158,.45); font: italic 16px/1.6 serif; color: #e6d6b8; pointer-events: none; opacity: 0; transition: opacity .4s; }
     #page b { display: block; font: 600 13px/1.4 serif; font-style: normal; color: #cbbd9e; margin-bottom: 4px; }
     #minimap { position: fixed; right: 16px; top: 16px; pointer-events: none; opacity: .85; }
+    #lockhp { position: fixed; width: 54px; height: 4px; margin: 16px 0 0 -27px; background: rgba(0,0,0,.6); border: 1px solid rgba(203,189,158,.4); pointer-events: none; display: none; }
+    #lockhp > i { display: block; height: 100%; background: #a83a2c; }
+    .dmg { position: fixed; left: 0; top: 0; font: 700 16px/1 ui-monospace, monospace; color: #f0e2c0; text-shadow: 0 0 4px #000, 0 0 2px #000; pointer-events: none; opacity: 0; }
+    .dmg.heavy { font-size: 21px; color: #ffcf6a; }
     .gob-mark { position: fixed; left: 0; top: 0; font: 700 22px/1 serif; color: #ffcf6a; text-shadow: 0 0 6px #000, 0 0 2px #000; pointer-events: none; display: none; }
   `;
   document.head.appendChild(style);
@@ -54,7 +59,10 @@ export function createHud() {
   boss.innerHTML = '<span></span><div class="bar"><b></b><i></i></div>';
   const page = Object.assign(document.createElement('div'), { id: 'page' });
   const goal = Object.assign(document.createElement('div'), { id: 'goal' });
-  document.body.append(root, lock, toast, dead, prompt, boss, page, goal);
+  const lockHp = Object.assign(document.createElement('div'), { id: 'lockhp', innerHTML: '<i></i>' });
+  const dmg = Array.from({ length: 8 }, () => Object.assign(document.createElement('div'), { className: 'dmg' }));
+  let dmgNext = 0;
+  document.body.append(root, lock, toast, dead, prompt, boss, page, goal, lockHp, ...dmg);
   let goalText = '';
   let pageUntil = 0;
   const hp = root.querySelector<HTMLElement>('#hp > i')!;
@@ -140,6 +148,16 @@ export function createHud() {
         for (const m of b.marks ?? []) bar.insertAdjacentHTML('beforeend', `<s style="left:${m * 100}%"></s>`);
       }
     },
+    /** 피해 숫자 (화면 좌표). 0.8초 동안 떠오르며 사라진다. 가장 오래된 노드를 다시 쓴다 */
+    damage(x: number, y: number, amount: number, heavy: boolean) {
+      const el = dmg[dmgNext++ % dmg.length]!;
+      el.textContent = String(Math.round(amount));
+      el.classList.toggle('heavy', heavy);
+      el.style.left = `${x + (Math.random() - 0.5) * 24}px`;
+      el.style.top = `${y}px`;
+      el.getAnimations().forEach((a) => a.cancel());
+      el.animate([{ transform: 'translate(-50%, 0)', opacity: 1 }, { transform: 'translate(-50%, -42px)', opacity: 0 }], { duration: 800, easing: 'ease-out' });
+    },
     /** 가까운 상호작용 대상 안내 (창이 열려 있으면 숨긴다) */
     prompt(target: Interactable | null, hidden: boolean) {
       const text = !target || hidden ? ''
@@ -154,7 +172,8 @@ export function createHud() {
       prompt.style.display = text ? 'block' : 'none';
       if (text) prompt.innerHTML = `<b>E</b>${text}`;
     },
-    update(dt: number, sim: Sim, lockScreen: { x: number; y: number } | null) {
+    /** lockHp: 락온한 일반 적의 체력 비율 (보스·없음이면 null) */
+    update(dt: number, sim: Sim, lockScreen: { x: number; y: number } | null, lockHpFrac: number | null = null) {
       clock += dt;
       lastDt = dt;
       const p = sim.player;
@@ -175,6 +194,12 @@ export function createHud() {
         lock.style.left = `${lockScreen.x}px`;
         lock.style.top = `${lockScreen.y}px`;
       } else lock.style.display = 'none';
+      lockHp.style.display = lockScreen && lockHpFrac !== null ? 'block' : 'none';
+      if (lockScreen && lockHpFrac !== null) {
+        lockHp.style.left = `${lockScreen.x}px`;
+        lockHp.style.top = `${lockScreen.y}px`;
+        lockHp.querySelector<HTMLElement>('i')!.style.width = `${Math.max(0, lockHpFrac) * 100}%`;
+      }
       if (clock > toastUntil) toast.style.opacity = '0';
       if (clock > pageUntil) page.style.opacity = '0';
       if (deathMode === 'auto') dead.style.display = p.action === 'dead' ? 'grid' : 'none';
