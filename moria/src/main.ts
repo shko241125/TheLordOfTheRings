@@ -378,6 +378,8 @@ async function boot() {
   /** 보스 체력바: 깨어 있는 보스 하나 (트롤·대장) */
   const BOSS_NAME: Record<string, string> = { troll: '동굴 트롤', captain: '고블린 대장' };
   const BOSS_MAX: Record<string, number> = { troll: TROLL_HP, captain: CAPTAIN_HP, balrog: BALROG_HP };
+  // 보스바 눈금 = 페이즈가 바뀌는 체력 비율 (대장: 50%에 휘파람 증원, 발로그: 40% 3페이즈 · 10% 끝 장면)
+  const BOSS_MARKS: Record<string, readonly number[]> = { captain: [0.5], balrog: [0.4, 0.1] };
   /** 보스 이름: 레벨이 정한 이름(우루크 대장) 또는 종류 이름 */
   const bossName = (id: number) => {
     const i = sim.bosses.indexOf(id);
@@ -389,7 +391,7 @@ async function boot() {
       const e = sim.enemies.find((x) => x.id === id);
       if (!e) continue;
       const awake = e.ai !== 'patrol' && e.ai !== 'dead' && e.ai !== 'suspicious';
-      if (awake) return { name: bossName(id), hp: e.hp, max: BOSS_MAX[e.kind] ?? e.hp, awake };
+      if (awake) return { name: bossName(id), hp: e.hp, max: BOSS_MAX[e.kind] ?? e.hp, awake, marks: BOSS_MARKS[e.kind] };
     }
     // 방어전: 남은 물결을 막대로
     const d = sim.defense;
@@ -397,7 +399,7 @@ async function boot() {
     if (defenseActive(sim)) {
       const left = sim.enemies.filter((e) => e.id >= d.firstId && e.ai !== 'dead').length + (sim.horde?.agents.length ?? 0);
       const name = d.state === 'wave' ? `방어전 — 물결 ${d.wave + 1}/${of} · 남은 적 ${left}` : `방어전 — 다음 물결 ${d.wave + 1}/${of}`;
-      return { name, hp: of - d.wave, max: of, awake: true };
+      return { name, hp: of - d.wave, max: of, awake: true, marks: Array.from({ length: of - 1 }, (_, k) => (k + 1) / of) };
     }
     return null;
   };

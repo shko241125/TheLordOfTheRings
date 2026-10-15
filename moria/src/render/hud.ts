@@ -7,14 +7,20 @@ import { GRADE_COLORS, GRADE_NAMES } from '../sim/items';
 
 /**
  * HUD (HTML 오버레이 — 계획서 13장). 전투 중에는 가장자리에만: 좌하단 체력·스태미나, 락온 표식, 짧은 알림.
+ *  - 지연 체력바: 맞으면 줄어든 만큼 흰 띠가 0.5초 남았다가 천천히 따라 줄어든다 (플레이어·보스).
+ *  - 비전투 5초가 지나면 좌하단 막대가 흐려진다 (opacity 0.3). 체력이 35% 아래면 늘 또렷하게.
+ *  - 보스바 눈금: 페이즈가 바뀌는 체력 지점.
  * 게임 로직은 DOM을 만지지 않는다 — 여기서 시뮬레이션 상태를 읽기만 한다.
  */
 export function createHud() {
   const style = document.createElement('style');
   style.textContent = `
     #hudbars { position: fixed; left: 16px; bottom: 44px; width: 260px; pointer-events: none; font: 12px/1.3 ui-monospace, monospace; color: #cbbd9e; }
-    #hudbars .bar { height: 8px; background: rgba(0,0,0,.55); border: 1px solid rgba(203,189,158,.35); margin-top: 5px; }
-    #hudbars .bar > i { display: block; height: 100%; transition: width .08s linear; }
+    #hudbars { transition: opacity .6s; }
+    #hudbars .bar { position: relative; height: 8px; background: rgba(0,0,0,.55); border: 1px solid rgba(203,189,158,.35); margin-top: 5px; }
+    #hudbars .bar > i, #boss .bar > i { position: relative; display: block; height: 100%; transition: width .08s linear; }
+    .bar > b { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(240,228,205,.75); }
+    #boss .bar > s { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: rgba(240,228,205,.8); }
     #hp > i { background: #a83a2c; } #st > i { background: #b8a24a; } #st.low > i { background: #6d5e2a; }
     #hudbars .row { display: flex; justify-content: space-between; margin-top: 6px; opacity: .85; }
     #lock { position: fixed; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 2px solid rgba(255,200,120,.9); border-radius: 50%; pointer-events: none; display: none; box-shadow: 0 0 6px rgba(255,160,60,.6); }
@@ -25,8 +31,8 @@ export function createHud() {
     #prompt { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); font: 16px/1 serif; color: #f0e2c0; text-shadow: 0 0 6px #000; pointer-events: none; display: none; }
     #prompt b { display: inline-block; padding: 2px 7px; margin-right: 6px; border: 1px solid #cbbd9e; border-radius: 3px; font: 600 13px ui-monospace, monospace; }
     #boss { position: fixed; left: 50%; top: 22px; width: min(460px, 70vw); transform: translateX(-50%); pointer-events: none; display: none; font: 15px/1.4 serif; color: #e6d6b8; text-align: center; text-shadow: 0 0 5px #000; }
-    #boss .bar { height: 9px; margin-top: 4px; background: rgba(0,0,0,.6); border: 1px solid rgba(203,189,158,.4); }
-    #boss .bar > i { display: block; height: 100%; background: #8e2a1c; transition: width .12s linear; }
+    #boss .bar { position: relative; height: 9px; margin-top: 4px; background: rgba(0,0,0,.6); border: 1px solid rgba(203,189,158,.4); }
+    #boss .bar > i { background: #8e2a1c; }
     #goal { position: fixed; left: 16px; top: 60px; max-width: min(420px, 60vw); font: 14px/1.4 serif; color: #e6d6b8; text-shadow: 0 0 5px #000, 0 0 2px #000; pointer-events: none; }
     #goal b { display: block; font: 600 11px/1.4 ui-monospace, monospace; color: #b8a888; letter-spacing: .05em; }
     #page { position: fixed; left: 50%; bottom: 30%; transform: translateX(-50%); max-width: min(560px, 88vw); padding: 12px 18px; background: rgba(30,22,12,.82); border: 1px solid rgba(203,189,158,.45); font: italic 16px/1.6 serif; color: #e6d6b8; pointer-events: none; opacity: 0; transition: opacity .4s; }
@@ -37,7 +43,7 @@ export function createHud() {
   document.head.appendChild(style);
   const root = document.createElement('div');
   root.id = 'hudbars';
-  root.innerHTML = `<div id="lv" class="row" style="margin:0 0 4px"></div><div id="hp" class="bar"><i></i></div><div id="st" class="bar"><i></i></div><div class="row"><span id="torch"></span><span id="state"></span></div>`;
+  root.innerHTML = `<div id="lv" class="row" style="margin:0 0 4px"></div><div id="hp" class="bar"><b></b><i></i></div><div id="st" class="bar"><i></i></div><div class="row"><span id="torch"></span><span id="state"></span></div>`;
   const lock = Object.assign(document.createElement('div'), { id: 'lock' });
   const toast = Object.assign(document.createElement('div'), { id: 'toast' });
   const dead = Object.assign(document.createElement('div'), { id: 'dead' });
@@ -45,7 +51,7 @@ export function createHud() {
   let deathMode: 'auto' | 'shown' = 'auto';
   const prompt = Object.assign(document.createElement('div'), { id: 'prompt' });
   const boss = Object.assign(document.createElement('div'), { id: 'boss' });
-  boss.innerHTML = '<span></span><div class="bar"><i></i></div>';
+  boss.innerHTML = '<span></span><div class="bar"><b></b><i></i></div>';
   const page = Object.assign(document.createElement('div'), { id: 'page' });
   const goal = Object.assign(document.createElement('div'), { id: 'goal' });
   document.body.append(root, lock, toast, dead, prompt, boss, page, goal);
@@ -59,6 +65,26 @@ export function createHud() {
   const state = root.querySelector<HTMLElement>('#state')!;
   let toastUntil = 0;
   let clock = 0;
+  /** 지연 막대: 보이는 폭(0..1)이 목표를 따라간다. 줄 때만 0.5초 기다렸다가 초당 40%씩. 목표가 바뀌었으면 true */
+  let lastDt = 0;
+  const trail = (el: HTMLElement) => {
+    let shown = 1;
+    let last = 1;
+    let holdUntil = 0;
+    return (target: number) => {
+      if (target < last) holdUntil = clock + 0.5;
+      const changed = target !== last;
+      last = target;
+      if (target >= shown) shown = target;
+      else if (clock >= holdUntil) shown = Math.max(target, shown - 0.4 * lastDt);
+      el.style.width = `${shown * 100}%`;
+      return changed;
+    };
+  };
+  const hpTrail = trail(root.querySelector<HTMLElement>('#hp > b')!);
+  const bossTrail = trail(boss.querySelector<HTMLElement>('b')!);
+  let bossMarks = '';
+  let lastBusy = -Infinity;
 
   return {
     /** 지금 목표 한 줄 (메인 퀘스트의 지금 단계). 바뀔 때만 다시 쓴다 */
@@ -99,12 +125,20 @@ export function createHud() {
       dead.innerHTML = `${mode === 'replay' ? '기록은 여기서 끝난다' : '쓰러졌다'}<span class="book">마자르불의 책 — “${esc(line)}”</span><small>${hint}</small>`;
       dead.style.display = 'grid';
     },
-    /** 보스 체력바 (깨어 있을 때만) */
-    boss(b: { name: string; hp: number; max: number; awake: boolean } | null) {
+    /** 보스 체력바 (깨어 있을 때만). marks: 페이즈가 바뀌는 체력 비율 (눈금) */
+    boss(b: { name: string; hp: number; max: number; awake: boolean; marks?: readonly number[] } | null) {
       boss.style.display = b?.awake ? 'block' : 'none';
       if (!b?.awake) return;
       boss.querySelector('span')!.textContent = b.name;
       boss.querySelector<HTMLElement>('i')!.style.width = `${(b.hp / b.max) * 100}%`;
+      bossTrail(b.hp / b.max);
+      const key = (b.marks ?? []).join();
+      if (key !== bossMarks) {
+        bossMarks = key;
+        const bar = boss.querySelector('.bar')!;
+        bar.querySelectorAll('s').forEach((x) => x.remove());
+        for (const m of b.marks ?? []) bar.insertAdjacentHTML('beforeend', `<s style="left:${m * 100}%"></s>`);
+      }
     },
     /** 가까운 상호작용 대상 안내 (창이 열려 있으면 숨긴다) */
     prompt(target: Interactable | null, hidden: boolean) {
@@ -122,8 +156,13 @@ export function createHud() {
     },
     update(dt: number, sim: Sim, lockScreen: { x: number; y: number } | null) {
       clock += dt;
+      lastDt = dt;
       const p = sim.player;
       hp.style.width = `${(p.hp / p.maxHp) * 100}%`;
+      const hpChanged = hpTrail(p.hp / p.maxHp);
+      // 전투 중 = 락온, 스태미나 회복 중, 체력 변화, 공격·회피 등 행동 중. 그 뒤 5초 지나면 흐리게
+      if (lockScreen || p.stamina < STAMINA_MAX || p.action !== 'free' || hpChanged) lastBusy = clock;
+      root.style.opacity = clock - lastBusy > 5 && p.hp > p.maxHp * 0.35 ? '0.3' : '1';
       st.style.width = `${(p.stamina / STAMINA_MAX) * 100}%`;
       stBar.classList.toggle('low', p.exhausted);
       const senseLeft = Math.max(0, p.senseReadyAt - sim.tick);
