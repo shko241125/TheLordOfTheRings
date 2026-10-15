@@ -319,8 +319,10 @@ async function boot() {
     settings = s;
     saveSettings(s);
     input.configure(s.keys, s.mouseSens, s.invertY);
+    const kn = (c: string) => c.replace(/^Key/, '').replace(/^Digit/, '').replace('ShiftLeft', 'Shift');
+    hud.keys({ torch: kn(s.keys.torch), sense: kn(s.keys.sense), call: kn(s.keys.call), drink: kn(s.keys.drink) });
     renderer.toneMappingExposure = s.brightness;
-    for (const id of ['hudbars', 'toast', 'prompt', 'boss', 'dead', 'durin', 'lock']) {
+    for (const id of ['hudbars', 'toast', 'prompt', 'boss', 'dead', 'durin', 'lock', 'slots']) {
       const el = document.getElementById(id);
       if (el) el.style.zoom = String(s.textScale);
     }

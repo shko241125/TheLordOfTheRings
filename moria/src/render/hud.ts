@@ -2,6 +2,7 @@ import type { Interactable } from '../sim/interact';
 import type { Level } from '../sim/level';
 import type { Sim } from '../sim/types';
 import { STAMINA_MAX } from '../sim/combat';
+import { SENSE_COOLDOWN } from '../sim/player';
 import { xpToNext } from '../sim/growth';
 import { GRADE_COLORS, GRADE_NAMES } from '../sim/items';
 
@@ -10,6 +11,7 @@ import { GRADE_COLORS, GRADE_NAMES } from '../sim/items';
  *  - 지연 체력바: 맞으면 줄어든 만큼 흰 띠가 0.5초 남았다가 천천히 따라 줄어든다 (플레이어·보스).
  *  - 비전투 5초가 지나면 좌하단 막대가 흐려진다 (opacity 0.3). 체력이 35% 아래면 늘 또렷하게.
  *  - 보스바 눈금: 페이즈가 바뀌는 체력 지점.
+ *  - 하단 중앙 행동 칸 4개: 횃불(예비 수) · 돌의 감각(재사용 원형 스위프) · 동료(게이지 스위프) · 약초(개수). 칸 위에 지금 키.
  *  - 월드 안: 락온한 적의 작은 체력바(보스는 위쪽 보스바), 피해 숫자 (노드 8개를 돌려 쓴다 — DOM이 늘지 않는다).
  * 게임 로직은 DOM을 만지지 않는다 — 여기서 시뮬레이션 상태를 읽기만 한다.
  */
@@ -43,12 +45,20 @@ export function createHud() {
     #lockhp > i { display: block; height: 100%; background: #a83a2c; }
     .dmg { position: fixed; left: 0; top: 0; font: 700 16px/1 ui-monospace, monospace; color: #f0e2c0; text-shadow: 0 0 4px #000, 0 0 2px #000; pointer-events: none; opacity: 0; }
     .dmg.heavy { font-size: 21px; color: #ffcf6a; }
+    #slots { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 8px; pointer-events: none; transition: opacity .6s; }
+    #slots > div { position: relative; width: 50px; height: 50px; border: 1px solid rgba(203,189,158,.45); background: rgba(74,64,48,.6); font: 11px/1.2 serif; color: #e6d6b8; text-align: center; overflow: hidden; }
+    #slots > div > u { position: absolute; inset: 0; background: conic-gradient(rgba(0,0,0,.8) calc(var(--p, 0) * 1turn), transparent 0); text-decoration: none; }
+    #slots span { position: relative; display: block; margin-top: 17px; text-shadow: 0 0 3px #000; }
+    #slots kbd { position: absolute; left: 3px; top: 2px; font: 600 10px ui-monospace, monospace; color: #b8a888; }
+    #slots em { position: absolute; right: 4px; bottom: 2px; font: 600 12px ui-monospace, monospace; font-style: normal; }
+    #slots .ready { border-color: rgba(255,207,106,.9); box-shadow: 0 0 6px rgba(255,170,70,.5); }
+    #slots .empty { opacity: .45; }
     .gob-mark { position: fixed; left: 0; top: 0; font: 700 22px/1 serif; color: #ffcf6a; text-shadow: 0 0 6px #000, 0 0 2px #000; pointer-events: none; display: none; }
   `;
   document.head.appendChild(style);
   const root = document.createElement('div');
   root.id = 'hudbars';
-  root.innerHTML = `<div id="lv" class="row" style="margin:0 0 4px"></div><div id="hp" class="bar"><b></b><i></i></div><div id="st" class="bar"><i></i></div><div class="row"><span id="torch"></span><span id="state"></span></div>`;
+  root.innerHTML = `<div id="lv" class="row" style="margin:0 0 4px"></div><div id="hp" class="bar"><b></b><i></i></div><div id="st" class="bar"><i></i></div><div class="row"><span id="state"></span></div>`;
   const lock = Object.assign(document.createElement('div'), { id: 'lock' });
   const toast = Object.assign(document.createElement('div'), { id: 'toast' });
   const dead = Object.assign(document.createElement('div'), { id: 'dead' });
@@ -62,13 +72,21 @@ export function createHud() {
   const lockHp = Object.assign(document.createElement('div'), { id: 'lockhp', innerHTML: '<i></i>' });
   const dmg = Array.from({ length: 8 }, () => Object.assign(document.createElement('div'), { className: 'dmg' }));
   let dmgNext = 0;
-  document.body.append(root, lock, toast, dead, prompt, boss, page, goal, lockHp, ...dmg);
+  const slots = Object.assign(document.createElement('div'), { id: 'slots' });
+  const SLOT_NAMES = { torch: '횃불', sense: '감각', call: '동료', drink: '약초' } as const;
+  type SlotId = keyof typeof SLOT_NAMES;
+  slots.innerHTML = (Object.keys(SLOT_NAMES) as SlotId[]).map((k) => `<div data-s="${k}"><u></u><kbd></kbd><span>${SLOT_NAMES[k]}</span><em></em></div>`).join('');
+  const slot = (k: SlotId) => {
+    const el = slots.querySelector<HTMLElement>(`[data-s="${k}"]`)!;
+    return { el, sweep: el.querySelector('u')!, key: el.querySelector('kbd')!, count: el.querySelector('em')! };
+  };
+  const slotEls = { torch: slot('torch'), sense: slot('sense'), call: slot('call'), drink: slot('drink') };
+  document.body.append(root, lock, toast, dead, prompt, boss, page, goal, lockHp, slots, ...dmg);
   let goalText = '';
   let pageUntil = 0;
   const hp = root.querySelector<HTMLElement>('#hp > i')!;
   const st = root.querySelector<HTMLElement>('#st > i')!;
   const stBar = root.querySelector<HTMLElement>('#st')!;
-  const torch = root.querySelector<HTMLElement>('#torch')!;
   const level = root.querySelector<HTMLElement>('#lv')!;
   const state = root.querySelector<HTMLElement>('#state')!;
   let toastUntil = 0;
@@ -148,6 +166,10 @@ export function createHud() {
         for (const m of b.marks ?? []) bar.insertAdjacentHTML('beforeend', `<s style="left:${m * 100}%"></s>`);
       }
     },
+    /** 행동 칸 위에 보일 키 이름 (설정에서 키를 바꾸면 다시 부른다) */
+    keys(k: Record<SlotId, string>) {
+      for (const id of Object.keys(k) as SlotId[]) slotEls[id].key.textContent = k[id];
+    },
     /** 피해 숫자 (화면 좌표). 0.8초 동안 떠오르며 사라진다. 가장 오래된 노드를 다시 쓴다 */
     damage(x: number, y: number, amount: number, heavy: boolean) {
       const el = dmg[dmgNext++ % dmg.length]!;
@@ -181,13 +203,21 @@ export function createHud() {
       const hpChanged = hpTrail(p.hp / p.maxHp);
       // 전투 중 = 락온, 스태미나 회복 중, 체력 변화, 공격·회피 등 행동 중. 그 뒤 5초 지나면 흐리게
       if (lockScreen || p.stamina < STAMINA_MAX || p.action !== 'free' || hpChanged) lastBusy = clock;
-      root.style.opacity = clock - lastBusy > 5 && p.hp > p.maxHp * 0.35 ? '0.3' : '1';
+      root.style.opacity = slots.style.opacity = clock - lastBusy > 5 && p.hp > p.maxHp * 0.35 ? '0.3' : '1';
       st.style.width = `${(p.stamina / STAMINA_MAX) * 100}%`;
       stBar.classList.toggle('low', p.exhausted);
       const senseLeft = Math.max(0, p.senseReadyAt - sim.tick);
-      const ally = p.companion >= 100 ? '준비 (Q)' : `${Math.floor(p.companion)}%`;
       level.textContent = `Lv ${p.level} · XP ${Math.floor(p.xp)}/${xpToNext(p.level)}${p.points ? ` · 스킬 포인트 ${p.points} (Tab)` : ''}`;
-      torch.textContent = `횃불 ${p.heldTorch >= 0 ? '들고 있음' : '없음'} · 예비 ${p.spareTorches} · 약초 ${p.draughts} · 돌의 감각 ${senseLeft > 0 ? `${Math.ceil(senseLeft / 60)}초` : '준비'} · 동료 ${ally}`;
+      const { torch: t, sense: se, call: ca, drink: dr } = slotEls;
+      t.count.textContent = String(p.spareTorches);
+      t.el.classList.toggle('ready', p.heldTorch >= 0);
+      t.el.classList.toggle('empty', p.heldTorch < 0 && p.spareTorches === 0);
+      se.sweep.style.setProperty('--p', String(senseLeft / Math.max(1, SENSE_COOLDOWN - p.mods.senseCd)));
+      se.count.textContent = senseLeft > 0 ? String(Math.ceil(senseLeft / 60)) : '';
+      ca.sweep.style.setProperty('--p', String(1 - Math.min(100, p.companion) / 100));
+      ca.el.classList.toggle('ready', p.companion >= 100);
+      dr.count.textContent = String(p.draughts);
+      dr.el.classList.toggle('empty', p.draughts === 0);
       state.textContent = sim.tick < p.riposteUntil ? '반격!' : '';
       if (lockScreen) {
         lock.style.display = 'block';
