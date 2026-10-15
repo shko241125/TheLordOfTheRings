@@ -2,7 +2,7 @@ import { COMPANIONS } from './sim/companion';
 import type { NavMesh } from 'navcat';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three/webgpu';
-import { createAudio } from './audio/audio';
+import { createAudio, roomReverb } from './audio/audio';
 import { createInput } from './core/input';
 import { DT, createFixedStep } from './core/loop';
 import { angleDiff, angleToRad } from './core/trig';
@@ -766,6 +766,8 @@ async function boot() {
     const hint = durin.update(dt, target?.kind === 'door');
     if (hint) hud.toast(hint, 6);
     const room = gs.roomAt(view);
+    const roomBox = sim.level.rooms?.[room];
+    if (roomBox) audio.space(roomReverb(roomBox));
     minimap?.visit(room);
     minimap?.draw(sim, view.x, view.z, input.view.yaw);
     const visibleRooms = gs.cull(follow.camera, view);

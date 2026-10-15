@@ -12,9 +12,20 @@ import type { DirectorPhase, SimEvent } from '../sim/types';
  */
 export type At = { x: number; y: number; z: number };
 
+/**
+ * 방 크기 → 잔향 양 0..1 (계획서 12장: 넓은 홀에만 리버브, 좁은 통로는 드라이).
+ * 방 상자의 좁은 쪽 가로 폭으로 정한다 — 통로·계단(3~6m)은 0, 폭 26m 이상 홀은 1.
+ * ponytail: 상자 폭만 본다 (천장 높이·바깥 공간 구분 없음) — 서문 밖처럼 하늘이 열린 곳도 벽 사이로 울린다
+ */
+export function roomReverb(room: { min: readonly number[]; max: readonly number[] }): number {
+  const narrow = Math.min(room.max[0]! - room.min[0]!, room.max[2]! - room.min[2]!);
+  return Math.max(0, Math.min(1, (narrow - 6) / 20));
+}
+
 export function createAudio() {
   let ctx: AudioContext | null = null;
   let master: GainNode;
+  let wet: GainNode;
   let drumBus: GainNode;
   let drumFilter: BiquadFilterNode;
   let sfx: GainNode;
@@ -42,7 +53,7 @@ export function createAudio() {
     master.gain.value = 0.8;
     const verb = c.createConvolver();
     verb.buffer = impulse(c, 3.2, 2.6); // 넓은 석실의 긴 잔향
-    const wet = c.createGain();
+    wet = c.createGain();
     wet.gain.value = 0.45;
     verb.connect(wet).connect(master);
     master.connect(c.destination);
@@ -209,6 +220,11 @@ export function createAudio() {
         l.setPosition(px, py, pz);
         l.setOrientation(fx, fy, fz, 0, 1, 0);
       }
+    },
+    /** 지금 방의 잔향 양 0..1 (roomReverb). 방을 옮기면 1초쯤에 걸쳐 바뀐다 */
+    space(amount: number) {
+      if (!ctx || ctx.state !== 'running') return;
+      wet.gain.setTargetAtTime(0.06 + amount * 0.54, ctx.currentTime, 0.4);
     },
     /** at: 사건이 난 자리 (없으면 가운데에서 들린다) */
     event(ev: SimEvent, at?: At | null) {
