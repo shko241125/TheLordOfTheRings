@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { beforeAll, describe, expect, it } from 'vitest';
-import { CMD_STORY_OFF, CMD_STORY_ON, restoreGrowth } from '../src/sim/growth';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { CMD_EASY, CMD_HARD, CMD_STORY_OFF, CMD_STORY_ON, difficultyOf, restoreGrowth } from '../src/sim/growth';
+import { loadSettings } from '../src/settings';
 import { PARRY_WINDOW_FROM, PARRY_WINDOW_TO } from '../src/sim/combat';
 import { hitPlayer } from '../src/sim/player';
 import { createSim, disposeSim, hashSim, stepSim, type InputFrame, type Sim } from '../src/sim/sim';
@@ -71,5 +72,32 @@ describe('스토리 난이도', () => {
     expect(tryParry(late, ...front)).toBe('parry');
     expect(tryParry(PARRY_WINDOW_TO + (PARRY_WINDOW_TO - PARRY_WINDOW_FROM), ...front)).toBe('hit'); // 2배 창의 끝
     disposeSim(s);
+  });
+
+  it('난이도 3단계 + 스토리: 하나만 켜지고, 받는 피해가 0.5 / 0.75 / 1 / 1.5배', () => {
+    const s = createSim(ZONES.zone1, 5);
+    restoreGrowth(s, { level: 1, xp: 0, points: 0, skills: [], perks: ['miner'] });
+    const seen: [string, number][] = [];
+    for (const cmd of [CMD_STORY_ON, CMD_EASY, CMD_STORY_OFF, CMD_HARD]) {
+      stepSim(s, idle(cmd));
+      seen.push([difficultyOf(s.player.perks), lost(s, 20)]);
+      s.player.hp = s.player.maxHp;
+    }
+    expect(seen).toEqual([['story', 10], ['easy', 15], ['normal', 20], ['hard', 30]]);
+    expect(s.player.perks).toEqual(['miner', 'hard']); // 다른 영구 보상은 그대로, 난이도는 하나
+    disposeSim(s);
+  });
+});
+
+describe('난이도 설정', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const stored = (v: object) => vi.stubGlobal('localStorage', { getItem: () => JSON.stringify(v) });
+  it('M5-E의 story: true는 스토리로 이어 받고, 모르는 값은 보통', () => {
+    stored({ story: true });
+    expect(loadSettings().difficulty).toBe('story');
+    stored({ difficulty: 'hard' });
+    expect(loadSettings().difficulty).toBe('hard');
+    stored({ difficulty: 'nightmare' });
+    expect(loadSettings().difficulty).toBe('normal');
   });
 });

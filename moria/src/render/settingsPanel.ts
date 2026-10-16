@@ -15,6 +15,7 @@ export function createSettingsPanel(host: HTMLElement, initial: Settings, onChan
     #settings h3 { margin: 0 0 10px; font-weight: normal; letter-spacing: .08em; }
     #settings label { display: grid; grid-template-columns: 1fr 180px; align-items: center; gap: 12px; margin: 6px 0; }
     #settings input[type=range] { width: 100%; }
+    #settings select { font: 13px serif; padding: 2px 4px; background: #1d1a16; color: #d8cbb0; border: 1px solid #5a5040; }
     #settings .keys { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-top: 8px; }
     #settings button { font: 13px ui-monospace, monospace; padding: 3px 10px; background: #1d1a16; color: #d8cbb0; border: 1px solid #5a5040; cursor: pointer; }
     #settings button.wait { border-color: #ffb050; color: #ffb050; }
@@ -40,7 +41,7 @@ export function createSettingsPanel(host: HTMLElement, initial: Settings, onChan
   function slider(label: string, key: 'pulse' | 'brightness' | 'textScale' | 'mouseSens', min: number, max: number, step: number) {
     return `<label>${label}<input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${s[key]}"></label>`;
   }
-  function check(label: string, key: 'shake' | 'invertY' | 'colorSafe' | 'story') {
+  function check(label: string, key: 'shake' | 'invertY' | 'colorSafe') {
     return `<label>${label}<input type="checkbox" data-k="${key}" ${s[key] ? 'checked' : ''}></label>`;
   }
   function render() {
@@ -52,16 +53,18 @@ export function createSettingsPanel(host: HTMLElement, initial: Settings, onChan
       ${slider('마우스 감도', 'mouseSens', 0.3, 3, 0.05)}
       ${check('마우스 상하 반전', 'invertY')}
       ${check('색각 보정 (빨강·주황 신호 → 노랑·하늘색)', 'colorSafe')}
-      ${check('스토리 난이도 (받는 피해 절반, 패링 창 2배)', 'story')}
+      <label>난이도<select data-k="difficulty">${(
+        [['story', '스토리 (받는 피해 ½, 패링 창 2배)'], ['easy', '쉬움 (받는 피해 ¾)'], ['normal', '보통'], ['hard', '어려움 (받는 피해 1.5배)']] as const
+      ).map(([v, t]) => `<option value="${v}" ${s.difficulty === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <div class="keys">${(Object.keys(ACTION_NAMES) as Action[])
         .map((a) => `<span>${ACTION_NAMES[a]}</span><button data-a="${a}" class="${waiting === a ? 'wait' : ''}">${waiting === a ? '키를 누르세요' : keyName(s.keys[a])}</button>`)
         .join('')}</div>
       <div class="row"><button data-export>저장 내보내기</button><button data-import>저장 가져오기</button></div>
       <div class="row"><button data-reset>기본값으로</button><button data-close>닫기</button></div>`;
-    panel.querySelectorAll<HTMLInputElement>('input').forEach((el) =>
+    panel.querySelectorAll<HTMLInputElement>('input, select').forEach((el) =>
       el.addEventListener('input', () => {
         const k = el.dataset.k as keyof Settings;
-        s = { ...s, [k]: el.type === 'checkbox' ? el.checked : Number(el.value) };
+        s = { ...s, [k]: el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : Number(el.value) };
         onChange(s);
       }),
     );

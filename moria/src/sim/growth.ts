@@ -147,6 +147,9 @@ export function computeMods(classId: ClassId, level: number, skills: readonly nu
     m.taken = 0.5;
     m.parry += PARRY_WINDOW_TO - PARRY_WINDOW_FROM;
   }
+  // 난이도 3단계 (계획서 13장): 쉬움 = 받는 피해 0.75, 어려움 = 1.5 (보통은 perk 없음)
+  if (perks.includes('easy')) m.taken = 0.75;
+  if (perks.includes('hard')) m.taken = 1.5;
   return m;
 }
 
@@ -187,18 +190,25 @@ export function addXp(sim: Sim, amount: number) {
 
 /** 입력 명령: 1..N = N−1번 노드 배우기, 255 = 초기화(밝힌 화로 곁에서만 — 계획서: 등불에서 무료로) */
 export const CMD_RESET = 255;
-/** 스토리 난이도 켜기·끄기 (어디서나) */
+/** 난이도 (어디서나): 250 스토리 · 251 보통 · 252 쉬움 · 253 어려움. 250·251은 M5-E의 '스토리 켜기·끄기' 그대로라 옛 기록과 뜻이 같다 */
 export const CMD_STORY_ON = 250;
 export const CMD_STORY_OFF = 251;
+export const CMD_EASY = 252;
+export const CMD_HARD = 253;
+/** 난이도 perk (많아야 하나). 없으면 보통 */
+export const DIFFICULTY_PERKS = ['story', 'easy', 'hard'] as const;
+export type Difficulty = (typeof DIFFICULTY_PERKS)[number] | 'normal';
+export const difficultyOf = (perks: readonly string[]): Difficulty => DIFFICULTY_PERKS.find((d) => perks.includes(d)) ?? 'normal';
+export const DIFFICULTY_CMD: Record<Difficulty, number> = { story: CMD_STORY_ON, normal: CMD_STORY_OFF, easy: CMD_EASY, hard: CMD_HARD };
 export function applyCommand(sim: Sim, cmd: number, nearLitBrazier: boolean, npc: NpcKind | null = null) {
   const p = sim.player;
   // 대장장이 곁에서도 강화할 수 있다
   if (applyGearCommand(sim, cmd, nearLitBrazier || (npc === 'smith' && sim.forge.lit))) return; // 100..205 장비 명령
   if (applyShopCommand(sim, cmd, npc)) return; // 209..2xx 상점
-  if (cmd === CMD_STORY_ON || cmd === CMD_STORY_OFF) {
-    const on = cmd === CMD_STORY_ON;
-    if (on === p.perks.includes('story')) return;
-    p.perks = on ? [...p.perks, 'story'] : p.perks.filter((x) => x !== 'story');
+  if (cmd >= CMD_STORY_ON && cmd <= CMD_HARD) {
+    const want = (Object.keys(DIFFICULTY_CMD) as Difficulty[]).find((d) => DIFFICULTY_CMD[d] === cmd)!;
+    if (want === difficultyOf(p.perks)) return;
+    p.perks = [...p.perks.filter((x) => !(DIFFICULTY_PERKS as readonly string[]).includes(x)), ...(want === 'normal' ? [] : [want])];
     refreshMods(sim);
     return;
   }
@@ -238,7 +248,7 @@ export function restoreGrowth(sim: Sim, g: { level: number; xp: number; points: 
   p.xp = Math.max(0, Math.floor(g.xp));
   p.skills = g.skills.filter((i, k, a) => Number.isInteger(i) && TREES[sim.classId].nodes[i] && a.indexOf(i) === k);
   p.points = Math.max(0, Math.floor(g.points));
-  p.perks = (g.perks ?? []).filter((x) => x === 'miner' || x === 'story');
+  p.perks = (g.perks ?? []).filter((x) => x === 'miner' || (DIFFICULTY_PERKS as readonly string[]).includes(x));
   p.mods = computeMods(sim.classId, p.level, p.skills, p.equipped, p.perks);
   p.maxHp = maxHpFor(p.level, p.mods);
   p.hp = p.maxHp;

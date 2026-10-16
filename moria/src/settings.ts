@@ -1,3 +1,4 @@
+import type { Difficulty } from './sim/growth';
 /**
  * 설정·접근성 (계획서 M5 3번). 브라우저에 저장하고, 막힌 환경(시크릿 창 등)에서는 기본값으로 돈다.
  * 시뮬레이션 규칙은 바꾸지 않는다 — 모두 보이는 것·조작 해석만 바꾼다 (리플레이 결정성과 무관).
@@ -28,16 +29,17 @@ export type Settings = {
   invertY: boolean;
   /** 색각 보정: 빨강·주황 신호(트롤 예고 고리, 금 간 기둥)를 노랑·하늘색으로 */
   colorSafe: boolean;
-  /** 스토리 난이도: 받는 피해 절반, 패링 창 2배 (용암은 그대로 — 보이는 함정이다) */
-  story: boolean;
+  /** 난이도: 스토리(받는 피해 절반, 패링 창 2배) · 쉬움(0.75) · 보통 · 어려움(1.5). 용암은 어느 난이도든 즉사 — 보이는 함정이다 */
+  difficulty: Difficulty;
   keys: Record<Action, string>;
 };
 
 export const DEFAULTS: Settings = {
-  shake: true, pulse: 1, brightness: 1, textScale: 1, mouseSens: 1, invertY: false, colorSafe: false, story: false, keys: { ...DEFAULT_KEYS },
+  shake: true, pulse: 1, brightness: 1, textScale: 1, mouseSens: 1, invertY: false, colorSafe: false, difficulty: 'normal', keys: { ...DEFAULT_KEYS },
 };
 
 const KEY = 'moria.settings';
+const DIFFICULTIES: readonly Difficulty[] = ['story', 'easy', 'normal', 'hard'];
 const clamp = (v: unknown, lo: number, hi: number, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
 
 export function loadSettings(): Settings {
@@ -53,7 +55,8 @@ export function loadSettings(): Settings {
       mouseSens: clamp(r.mouseSens, 0.3, 3, 1),
       invertY: r.invertY === true,
       colorSafe: r.colorSafe === true,
-      story: r.story === true,
+      // M5-E의 story: true 설정은 스토리로 이어 받는다
+      difficulty: (DIFFICULTIES as readonly unknown[]).includes(r.difficulty) ? r.difficulty! : (r as { story?: unknown }).story === true ? 'story' : 'normal',
       keys,
     };
   } catch {

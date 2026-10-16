@@ -38,7 +38,7 @@ import { BTN_LOCK, BTN_WORD, createSim, hashSim, stepSim } from './sim/sim';
 import { createTouch } from './core/touch';
 import { ZONES, ZONE_NAMES } from './sim/zones';
 import type { SimEvent } from './sim/types';
-import { CMD_STORY_OFF, CMD_STORY_ON, TREES, restoreGear, restoreGrowth } from './sim/growth';
+import { DIFFICULTY_CMD, TREES, difficultyOf, restoreGear, restoreGrowth } from './sim/growth';
 import type { ZoneId } from './sim/level';
 import { clearSave, loadSave, writeSave } from './save';
 import { createSettingsPanel } from './render/settingsPanel';
@@ -351,7 +351,7 @@ async function boot() {
     trolls.setPalette(s.colorSafe);
     collapseView.setPalette(s.colorSafe);
     // 스토리 난이도는 피해를 바꾸므로 명령으로 보낸다 (리플레이는 기록된 명령을 그대로 따른다)
-    if (!replay && s.story !== sim.player.perks.includes('story')) input.command(s.story ? CMD_STORY_ON : CMD_STORY_OFF);
+    if (!replay && s.difficulty !== difficultyOf(sim.player.perks)) input.command(DIFFICULTY_CMD[s.difficulty]);
   };
   createSettingsPanel(start, settings, applySettings);
   const skillPanel = createSkillPanel(

@@ -3,7 +3,9 @@ import type { Level } from '../sim/level';
 import type { Sim } from '../sim/types';
 import { STAMINA_MAX } from '../sim/combat';
 import { SENSE_COOLDOWN } from '../sim/player';
-import { xpToNext } from '../sim/growth';
+import { difficultyOf, xpToNext } from '../sim/growth';
+
+const DIFF_NAMES = { story: ' · 스토리', easy: ' · 쉬움', normal: '', hard: ' · 어려움' } as const;
 import { GRADE_COLORS, GRADE_NAMES } from '../sim/items';
 
 /**
@@ -212,7 +214,7 @@ export function createHud() {
       st.style.width = `${(p.stamina / STAMINA_MAX) * 100}%`;
       stBar.classList.toggle('low', p.exhausted);
       const senseLeft = Math.max(0, p.senseReadyAt - sim.tick);
-      level.textContent = `Lv ${p.level} · XP ${Math.floor(p.xp)}/${xpToNext(p.level)}${p.points ? ` · 스킬 포인트 ${p.points} (Tab)` : ''}${p.perks.includes('story') ? ' · 스토리' : ''}`;
+      level.textContent = `Lv ${p.level} · XP ${Math.floor(p.xp)}/${xpToNext(p.level)}${p.points ? ` · 스킬 포인트 ${p.points} (Tab)` : ''}${DIFF_NAMES[difficultyOf(p.perks)]}`;
       const { torch: t, sense: se, call: ca, drink: dr } = slotEls;
       t.count.textContent = String(p.spareTorches);
       t.el.classList.toggle('ready', p.heldTorch >= 0);
