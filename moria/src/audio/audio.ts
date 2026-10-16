@@ -35,6 +35,7 @@ export function createAudio() {
   let phase: DirectorPhase = 'relax';
   let noise: AudioBuffer;
   let onBeat: ((strong: boolean) => void) | null = null;
+  let paused = false;
 
   function impulse(c: AudioContext, seconds: number, decay: number) {
     const len = Math.floor(c.sampleRate * seconds);
@@ -177,9 +178,19 @@ export function createAudio() {
     onBeat(cb: (strong: boolean) => void) {
       onBeat = cb;
     },
+    /** 일시정지: 북을 새로 예약하지 않고 전체 소리를 낮춘다 (창을 고르는 소리는 들리게 끄지는 않는다) */
+    pause(on: boolean) {
+      if (on === paused) return;
+      paused = on;
+      if (ctx) master.gain.setTargetAtTime(on ? 0.2 : 0.8, ctx.currentTime, 0.15);
+    },
     /** 매 렌더 프레임: 디렉터 상태 → 북 템포·거리감, 앞질러 예약 */
     update(directorBpm: number, directorPhase: DirectorPhase) {
       if (!ctx || ctx.state !== 'running') return;
+      if (paused) {
+        nextBeat = ctx.currentTime + 0.1;
+        return;
+      }
       bpm = directorBpm;
       phase = directorPhase;
       const t = ctx.currentTime;

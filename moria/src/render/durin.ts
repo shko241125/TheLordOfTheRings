@@ -127,6 +127,10 @@ export function createDurinUI(onSolved: () => void, onToggle: (open: boolean) =>
     get isOpen() {
       return open;
     },
+    /** 답을 기다리는 중 (열려 있고 아직 못 풀었다) — 이동안 게임이 멈춘다. 풀린 뒤 0.9초 동안은 열려 있어도 정답 입력이 시뮬레이션에 들어가야 한다 */
+    get asking() {
+      return open && !solved;
+    },
     open() {
       if (open || solved) return;
       open = true;

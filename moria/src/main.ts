@@ -515,9 +515,10 @@ async function boot() {
       input.view.pitch += (-0.22 - input.view.pitch) * (1 - Math.exp(-4 * dt));
     }
 
-    // 일시정지 (계획서 13장: 메뉴를 열면 멈춘다): 시작·일시정지 화면(그 안의 설정·스킬·장비·일지·상점·대화 창)이 보이는 동안 시간이 흐르지 않는다.
+    // 일시정지 (계획서 13장: 메뉴를 열면 멈춘다): 시작·일시정지 화면(그 안의 설정·스킬·장비·일지·상점·대화 창)이나 두린의 문 수수께끼가 답을 기다리는 동안 시간이 흐르지 않는다.
     // 창에서 보낸 명령(구매·스킬·장비·난이도)은 시뮬레이션이 적용해야 하므로 그때만 버튼 없이 한 틱 진행한다 (기록에도 남는다)
-    const paused = start.style.display !== 'none' && !replayEnded;
+    const paused = (start.style.display !== 'none' || durin.asking) && !replayEnded;
+    audio.pause(paused);
     let pausedFrame: InputFrame | null = null;
     if (paused && !replay) {
       const f = input.sample(); // 쌓인 순간 입력은 버린다 (닫는 순간 한꺼번에 나가지 않게)
