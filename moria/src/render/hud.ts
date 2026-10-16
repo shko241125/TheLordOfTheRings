@@ -110,6 +110,8 @@ export function createHud() {
   const hpTrail = trail(root.querySelector<HTMLElement>('#hp > b')!);
   const bossTrail = trail(boss.querySelector<HTMLElement>('b')!);
   let bossMarks = '';
+  let interactKey = 'E';
+  let lastPrompt = '';
   let lastBusy = -Infinity;
 
   return {
@@ -166,9 +168,11 @@ export function createHud() {
         for (const m of b.marks ?? []) bar.insertAdjacentHTML('beforeend', `<s style="left:${m * 100}%"></s>`);
       }
     },
-    /** 행동 칸 위에 보일 키 이름 (설정에서 키를 바꾸면 다시 부른다) */
-    keys(k: Record<SlotId, string>) {
-      for (const id of Object.keys(k) as SlotId[]) slotEls[id].key.textContent = k[id];
+    /** 행동 칸·상호작용 안내에 보일 키 이름 (키 배치를 바꾸거나 마지막으로 쓴 장치가 바뀌면 다시 부른다) */
+    keys(k: Record<SlotId | 'interact', string>) {
+      for (const id of Object.keys(slotEls) as SlotId[]) slotEls[id].key.textContent = k[id];
+      interactKey = k.interact;
+      lastPrompt = '';
     },
     /** 피해 숫자 (화면 좌표). 0.8초 동안 떠오르며 사라진다. 가장 오래된 노드를 다시 쓴다 */
     damage(x: number, y: number, amount: number, heavy: boolean) {
@@ -192,7 +196,8 @@ export function createHud() {
         : target.kind === 'loot' ? `줍기 — <span style="color:${GRADE_COLORS[target.grade]}">${GRADE_NAMES[target.grade]} ${target.name}</span>`
         : target.lit ? '쉬기 (저장)' : '화로 밝히기';
       prompt.style.display = text ? 'block' : 'none';
-      if (text) prompt.innerHTML = `<b>E</b>${text}`;
+      if (text && text !== lastPrompt) prompt.innerHTML = `${interactKey ? `<b>${interactKey}</b>` : ''}${text}`;
+      lastPrompt = text;
     },
     /** lockHp: 락온한 일반 적의 체력 비율 (보스·없음이면 null) */
     update(dt: number, sim: Sim, lockScreen: { x: number; y: number } | null, lockHpFrac: number | null = null) {

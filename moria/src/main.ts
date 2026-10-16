@@ -315,12 +315,34 @@ async function boot() {
   });
 
   // 설정 적용 (창을 열 때마다 바로 반영, 저장)
+  const touchMode = matchMedia('(pointer: coarse)').matches || qs.get('touch') === '1';
+  // 화면의 키 표시는 마지막으로 쓴 장치를 따른다 (계획서 13장). 터치는 버튼에 이름이 있어 비운다.
+  // 판별은 여기서 한다 — src/core/input.ts를 바꾸면 시뮬레이션 버전이 달라져 옛 리플레이가 깨진다
+  let device: 'kbm' | 'pad' | 'touch' = touchMode ? 'touch' : 'kbm';
+  const PAD_KEYS = { torch: '↑', sense: '↓', call: 'LT+RT', drink: '←', interact: 'A' };
+  const showKeys = () => {
+    const kn = (c: string) => c.replace(/^Key/, '').replace(/^Digit/, '').replace('ShiftLeft', 'Shift');
+    const k = settings.keys;
+    hud.keys(device === 'pad' ? PAD_KEYS
+      : device === 'touch' ? { torch: '', sense: '', call: '', drink: '', interact: '' }
+      : { torch: kn(k.torch), sense: kn(k.sense), call: kn(k.call), drink: kn(k.drink), interact: kn(k.interact) });
+  };
+  const useDevice = (d: typeof device) => {
+    if (d === device) return;
+    device = d;
+    showKeys();
+  };
+  window.addEventListener('keydown', () => useDevice('kbm'));
+  window.addEventListener('mousedown', () => !touchMode && useDevice('kbm'));
+  const padActive = () => {
+    const g = navigator.getGamepads?.().find((x) => x?.mapping === 'standard');
+    return !!g && (g.buttons.some((b) => b.pressed) || g.axes.some((a) => Math.abs(a) > 0.5));
+  };
   const applySettings = (s: Settings) => {
     settings = s;
     saveSettings(s);
     input.configure(s.keys, s.mouseSens, s.invertY);
-    const kn = (c: string) => c.replace(/^Key/, '').replace(/^Digit/, '').replace('ShiftLeft', 'Shift');
-    hud.keys({ torch: kn(s.keys.torch), sense: kn(s.keys.sense), call: kn(s.keys.call), drink: kn(s.keys.drink) });
+    showKeys();
     renderer.toneMappingExposure = s.brightness;
     for (const id of ['hudbars', 'toast', 'prompt', 'boss', 'dead', 'durin', 'lock', 'slots']) {
       const el = document.getElementById(id);
@@ -370,7 +392,6 @@ async function boot() {
     return true;
   };
   // 터치 조작 (모바일 Low 단계): 터치 기기이거나 ?touch=1. 포인터 잠금이 없으므로 시작 화면은 탭으로 닫고 ❚❚로 다시 연다
-  const touchMode = matchMedia('(pointer: coarse)').matches || qs.get('touch') === '1';
   const touch = touchMode && !replay ? createTouch(input.view, () => { if (nearestInteractable(sim)?.kind === 'door') durin.open(); else talk(); }) : null;
   if (touch) {
     input.attachTouch(touch);
@@ -471,6 +492,7 @@ async function boot() {
       }
     }
     input.frame(now);
+    if (padActive()) useDevice('pad');
 
     // 락온: 카메라가 대상을 향해 돈다 (카메라 요는 입력의 기준이므로 이동도 대상 기준이 된다)
     // 모바일 자동 락온: 8m 안에 살아 있는 적이 있고 락온이 없으면 락온 버튼을 대신 누른다 (입력이라 리플레이에도 남는다)
