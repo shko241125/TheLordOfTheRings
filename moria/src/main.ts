@@ -291,9 +291,7 @@ async function boot() {
     // 메뉴 탭 넘기기 (계획서 13장: Q·E로 탭 전환): 장비·스킬·일지 중 하나가 열려 있으면 Q = 앞 탭, E = 다음 탭
     const tabOpen = MENU_TABS.findIndex((t) => t.panel.open);
     if (tabOpen >= 0 && (e.code === 'KeyQ' || e.code === 'KeyE')) {
-      const next = MENU_TABS[(tabOpen + (e.code === 'KeyE' ? 1 : MENU_TABS.length - 1)) % MENU_TABS.length]!;
-      MENU_TABS[tabOpen]!.panel.close();
-      next.panel.toggle();
+      switchTab(tabOpen, (tabOpen + (e.code === 'KeyE' ? 1 : MENU_TABS.length - 1)) % MENU_TABS.length);
       return;
     }
     // Tab: 스킬 창, I: 장비 창, J: 일지 (일시정지 화면 안) — 마우스로 고르도록 포인터 잠금을 푼다
@@ -389,9 +387,19 @@ async function boot() {
     { name: '✦ 스킬', key: 'Tab', panel: skillPanel },
     { name: '📜 일지', key: 'J', panel: journal },
   ];
-  // 탭 줄: 셋 중 하나가 열려 있을 때 화면 위쪽에 (지금 탭 강조, Q ◀ ▶ E)
+  const switchTab = (from: number, to: number) => {
+    if (from === to) return;
+    MENU_TABS[from]!.panel.close();
+    MENU_TABS[to]!.panel.toggle();
+  };
+  // 탭 줄: 셋 중 하나가 열려 있을 때 화면 위쪽에 (지금 탭 강조, Q ◀ ▶ E). 탭을 클릭해도 넘어간다 — 클릭이 게임 시작으로 번지지 않게 막는다
   const tabBar = Object.assign(document.createElement('div'), { id: 'menutabs' });
-  tabBar.style.cssText = 'position:fixed;left:50%;top:40px;transform:translateX(-50%);display:none;gap:4px;align-items:center;z-index:3;font:13px serif;color:#9a8f7a;pointer-events:none';
+  tabBar.style.cssText = 'position:fixed;left:50%;top:40px;transform:translateX(-50%);display:none;gap:4px;align-items:center;z-index:3;font:13px serif;color:#9a8f7a';
+  tabBar.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const to = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]')?.dataset.tab;
+    if (to !== undefined) switchTab(tabShown, +to);
+  });
   start.append(tabBar);
   let tabShown = -2;
   const updateTabs = () => {
@@ -399,9 +407,9 @@ async function boot() {
     if (i === tabShown) return;
     tabShown = i;
     tabBar.style.display = i >= 0 ? 'flex' : 'none';
-    tabBar.innerHTML = `<span style="margin-right:6px">Q ◀</span>${MENU_TABS.map(
-      (t, k) => `<span style="padding:3px 10px;border:1px solid ${k === i ? '#cbbd9e' : '#3a342a'};color:${k === i ? '#f0e2c0' : '#9a8f7a'};background:rgba(10,9,8,.9)">${t.name} <small style="display:inline;font-size:10px">${t.key}</small></span>`,
-    ).join('')}<span style="margin-left:6px">▶ E</span>`;
+    tabBar.innerHTML = `<span data-tab="${(i + MENU_TABS.length - 1) % MENU_TABS.length}" style="cursor:pointer;margin-right:6px">Q ◀</span>${MENU_TABS.map(
+      (t, k) => `<span data-tab="${k}" style="cursor:pointer;padding:3px 10px;border:1px solid ${k === i ? '#cbbd9e' : '#3a342a'};color:${k === i ? '#f0e2c0' : '#9a8f7a'};background:rgba(10,9,8,.9)">${t.name} <small style="display:inline;font-size:10px">${t.key}</small></span>`,
+    ).join('')}<span data-tab="${(i + 1) % MENU_TABS.length}" style="cursor:pointer;margin-left:6px">▶ E</span>`;
   };
   let talkingTo: { kind: 'merchant' | 'smith'; name: string } | null = null;
   const dialogue = createDialoguePanel(start, () => ({ sim, pages: pagesAll.size }), () => talkingTo && shopPanel.show(talkingTo));
