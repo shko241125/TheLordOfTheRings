@@ -375,7 +375,7 @@ async function boot() {
     (cmd) => input.command(cmd),
   );
   const shopPanel = createShopPanel(start, sim, (cmd) => input.command(cmd));
-  const journal = createJournal(start, sim, () => pagesAll.size);
+  const journal = createJournal(start, sim, () => pagesAll);
   let talkingTo: { kind: 'merchant' | 'smith'; name: string } | null = null;
   const dialogue = createDialoguePanel(start, () => ({ sim, pages: pagesAll.size }), () => talkingTo && shopPanel.show(talkingTo));
   /** NPC·구한 광부 곁에서 E: 대화 창 (일시정지 화면 안 — 마우스나 숫자 키로 고른다). 대화에서 상점으로 간다 */
