@@ -52,7 +52,7 @@ export function createSettingsPanel(host: HTMLElement, initial: Settings, onChan
       ${slider('마우스 감도', 'mouseSens', 0.3, 3, 0.05)}
       ${check('마우스 상하 반전', 'invertY')}
       ${check('색각 보정 (빨강·주황 신호 → 노랑·하늘색)', 'colorSafe')}
-      ${check('스토리 난이도 (받는 피해 절반)', 'story')}
+      ${check('스토리 난이도 (받는 피해 절반, 패링 창 2배)', 'story')}
       <div class="keys">${(Object.keys(ACTION_NAMES) as Action[])
         .map((a) => `<span>${ACTION_NAMES[a]}</span><button data-a="${a}" class="${waiting === a ? 'wait' : ''}">${waiting === a ? '키를 누르세요' : keyName(s.keys[a])}</button>`)
         .join('')}</div>

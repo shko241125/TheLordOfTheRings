@@ -212,7 +212,7 @@ export function createHud() {
       st.style.width = `${(p.stamina / STAMINA_MAX) * 100}%`;
       stBar.classList.toggle('low', p.exhausted);
       const senseLeft = Math.max(0, p.senseReadyAt - sim.tick);
-      level.textContent = `Lv ${p.level} · XP ${Math.floor(p.xp)}/${xpToNext(p.level)}${p.points ? ` · 스킬 포인트 ${p.points} (Tab)` : ''}`;
+      level.textContent = `Lv ${p.level} · XP ${Math.floor(p.xp)}/${xpToNext(p.level)}${p.points ? ` · 스킬 포인트 ${p.points} (Tab)` : ''}${p.perks.includes('story') ? ' · 스토리' : ''}`;
       const { torch: t, sense: se, call: ca, drink: dr } = slotEls;
       t.count.textContent = String(p.spareTorches);
       t.el.classList.toggle('ready', p.heldTorch >= 0);

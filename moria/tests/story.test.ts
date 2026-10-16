@@ -1,12 +1,13 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { CMD_STORY_OFF, CMD_STORY_ON, restoreGrowth } from '../src/sim/growth';
+import { PARRY_WINDOW_FROM, PARRY_WINDOW_TO } from '../src/sim/combat';
 import { hitPlayer } from '../src/sim/player';
 import { createSim, disposeSim, hashSim, stepSim, type InputFrame, type Sim } from '../src/sim/sim';
 import { restoreSim, takeSnapshot } from '../src/sim/snapshot';
 import { ZONES } from '../src/sim/zones';
 
-/** 스토리 난이도 (계획서 M5 3번): 명령으로 켜고 끄며, 받는 피해가 절반이 되고, 스냅샷·저장에 남는다 */
+/** 스토리 난이도 (계획서 13장·M5 3번): 명령으로 켜고 끄며, 받는 피해가 절반·패링 창이 2배가 되고, 스냅샷·저장에 남는다 */
 const idle = (cmd = 0): InputFrame => ({ buttons: 0, moveX: 0, moveY: 0, yaw: 0, ...(cmd ? { cmd } : {}) });
 const lost = (s: Sim, dmg: number) => {
   const hp = s.player.hp;
@@ -48,5 +49,27 @@ describe('스토리 난이도', () => {
     expect(c.player.mods.taken).toBe(0.5);
     expect(c.player.mods.ally).toBeCloseTo(1.25);
     [a, b, c].forEach(disposeSim);
+  });
+
+  it('패링 창이 2배: 기본 창이 끝난 뒤에도 같은 길이만큼 더 받아 낸다', () => {
+    const s = createSim(ZONES.zone1, 4);
+    const at = s.player.body.translation();
+    // 바라보는 쪽 2m 앞의 공격자 (방향 규칙은 hitPlayer가 정한다 — 기본 창 안에서 패링되는 자리를 찾는다)
+    const tryParry = (tick: number, x: number, z: number) => {
+      s.player.action = 'parry';
+      s.player.actionTick = tick;
+      s.player.hp = s.player.maxHp;
+      return hitPlayer(s, 10, x, z, 0, {});
+    };
+    const spots = [[0, 2], [0, -2], [2, 0], [-2, 0]].map(([dx, dz]) => [at.x + dx!, at.z + dz!] as const);
+    const front = spots.find(([x, z]) => tryParry(PARRY_WINDOW_FROM, x, z) === 'parry')!;
+    expect(front).toBeDefined();
+    const late = PARRY_WINDOW_TO + 5; // 기본 창(12틱) 밖, 2배 창(24틱) 안
+    expect(tryParry(late, ...front)).toBe('hit');
+    stepSim(s, idle(CMD_STORY_ON));
+    expect(s.player.mods.parry).toBe(PARRY_WINDOW_TO - PARRY_WINDOW_FROM);
+    expect(tryParry(late, ...front)).toBe('parry');
+    expect(tryParry(PARRY_WINDOW_TO + (PARRY_WINDOW_TO - PARRY_WINDOW_FROM), ...front)).toBe('hit'); // 2배 창의 끝
+    disposeSim(s);
   });
 });

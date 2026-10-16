@@ -3,6 +3,7 @@ import type { ClassId } from './classes';
 import { applyGearCommand } from './gear';
 import { itemMods, type Item } from './items';
 import type { Sim } from './types';
+import { PARRY_WINDOW_FROM, PARRY_WINDOW_TO } from './combat';
 
 /**
  * 성장 (계획서 8장): 레벨(최대 20) + 스킬 트리. 스탯을 직접 나누지 않고, 레벨업은 체력·피해를 조금 올리고 스킬 포인트 1개를 준다.
@@ -141,8 +142,11 @@ export function computeMods(classId: ClassId, level: number, skills: readonly nu
   }
   // 사이드 퀘스트 영구 보상
   if (perks.includes('miner')) m.ally *= 1.25;
-  // 스토리 난이도 (계획서 M5 3번 접근성): 받는 피해 절반 — 설정이지만 피해를 바꾸므로 명령으로 들어와 리플레이·저장에 남는다
-  if (perks.includes('story')) m.taken = 0.5;
+  // 스토리 난이도 (계획서 13장·M5 3번 접근성): 받는 피해 절반, 패링 창 2배(기본 창 폭을 한 번 더) — 설정이지만 판정을 바꾸므로 명령으로 들어와 리플레이·저장에 남는다
+  if (perks.includes('story')) {
+    m.taken = 0.5;
+    m.parry += PARRY_WINDOW_TO - PARRY_WINDOW_FROM;
+  }
   return m;
 }
 

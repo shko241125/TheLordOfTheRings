@@ -28,7 +28,7 @@ export type Settings = {
   invertY: boolean;
   /** 색각 보정: 빨강·주황 신호(트롤 예고 고리, 금 간 기둥)를 노랑·하늘색으로 */
   colorSafe: boolean;
-  /** 스토리 난이도: 받는 피해 절반 (용암은 그대로 — 보이는 함정이다) */
+  /** 스토리 난이도: 받는 피해 절반, 패링 창 2배 (용암은 그대로 — 보이는 함정이다) */
   story: boolean;
   keys: Record<Action, string>;
 };
