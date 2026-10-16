@@ -34,7 +34,7 @@ import { nearestInteractable, progressOf, restorePages, restoreProgress } from '
 import { PAGE_COUNT, PAGE_TEXTS } from './pages';
 import { defenseActive } from './sim/defense';
 import { TEST_ROOM } from './sim/level';
-import { BTN_LOCK, BTN_WORD, createSim, hashSim, stepSim } from './sim/sim';
+import { BTN_LOCK, BTN_WORD, createSim, hashSim, stepSim, type InputFrame } from './sim/sim';
 import { createTouch } from './core/touch';
 import { ZONES, ZONE_NAMES } from './sim/zones';
 import type { SimEvent } from './sim/types';
@@ -515,7 +515,15 @@ async function boot() {
       input.view.pitch += (-0.22 - input.view.pitch) * (1 - Math.exp(-4 * dt));
     }
 
-    const { steps, alpha } = loop.advance(replayEnded ? 0 : frameMs * (replay ? replaySpeed : 1));
+    // 일시정지 (계획서 13장: 메뉴를 열면 멈춘다): 시작·일시정지 화면(그 안의 설정·스킬·장비·일지·상점·대화 창)이 보이는 동안 시간이 흐르지 않는다.
+    // 창에서 보낸 명령(구매·스킬·장비·난이도)은 시뮬레이션이 적용해야 하므로 그때만 버튼 없이 한 틱 진행한다 (기록에도 남는다)
+    const paused = start.style.display !== 'none' && !replayEnded;
+    let pausedFrame: InputFrame | null = null;
+    if (paused && !replay) {
+      const f = input.sample(); // 쌓인 순간 입력은 버린다 (닫는 순간 한꺼번에 나가지 않게)
+      if (f.cmd) pausedFrame = { cmd: f.cmd, buttons: 0, moveX: 0, moveY: 0, yaw: f.yaw };
+    }
+    const { steps, alpha } = paused ? { steps: pausedFrame ? 1 : 0, alpha: 1 } : loop.advance(replayEnded ? 0 : frameMs * (replay ? replaySpeed : 1));
     for (let i = 0; i < steps; i++) {
       let frame;
       if (replay) {
@@ -530,6 +538,9 @@ async function boot() {
           break;
         }
         replayYaw = frame.yaw;
+      } else if (pausedFrame) {
+        frame = pausedFrame;
+        recorder!.record(sim, frame);
       } else {
         frame = input.sample();
         if (import.meta.env.DEV && now < devButtonsUntil) frame.buttons |= devButtons;
