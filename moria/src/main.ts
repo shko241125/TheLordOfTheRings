@@ -194,7 +194,7 @@ async function boot() {
   );
   const keyName = (c: string) => c.replace(/^Key/, '').replace('ShiftLeft', 'Shift');
   const k = settings.keys;
-  start.innerHTML = `클릭해서 모리아로 들어가기<small>${keyName(k.forward)}${keyName(k.left)}${keyName(k.back)}${keyName(k.right)} 이동 · 좌클릭 공격 · 우클릭(누르기) 강공격 · ${keyName(k.dodge)} 회피(길게: 질주) · ${keyName(k.parry)} 패링<br>휠 클릭 락온 · ${keyName(k.torch)} 횃불(길게: 던지기) · ${keyName(k.sense)} 돌의 감각 · ${keyName(k.interact)} 상호작용 · ${keyName(k.call)} 동료 · ${keyName(k.drink)} 약초 · ${keyName(k.crouch)} 웅크리기 · Esc 일시정지·설정<br>게임패드: Start 시작·일시정지 · View 메뉴 · LB·RB 탭 넘기기</small>`;
+  start.innerHTML = `클릭해서 모리아로 들어가기<small>${keyName(k.forward)}${keyName(k.left)}${keyName(k.back)}${keyName(k.right)} 이동 · 좌클릭 공격 · 우클릭(누르기) 강공격 · ${keyName(k.dodge)} 회피(길게: 질주) · ${keyName(k.parry)} 패링<br>휠 클릭 락온 · ${keyName(k.torch)} 횃불(길게: 던지기) · ${keyName(k.sense)} 돌의 감각 · ${keyName(k.interact)} 상호작용 · ${keyName(k.call)} 동료 · ${keyName(k.drink)} 약초 · ${keyName(k.crouch)} 웅크리기 · Esc 일시정지·설정<br>게임패드: Start 시작·일시정지 · View 메뉴 · LB·RB 탭 넘기기 · 창 안: 십자키 고르기·A 누르기·B 닫기</small>`;
   if (replay) start.innerHTML = `마자르불의 책<small>“${replay.header.line.replace(/</g, '&lt;')}”<br>클릭해서 마지막 60초 보기 · Space 0.25× 슬로우 · 마우스로 카메라</small>`;
   if (save) start.insertAdjacentHTML('beforeend', '<small>이어하기: 마지막으로 쉰 화로에서 · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>');
   // 새 게임 링크는 저장을 지운다 → 한 번 묻는다 (링크가 시작 화면 안이라 그대로 두면 클릭이 게임 시작으로도 번진다)
@@ -420,6 +420,16 @@ async function boot() {
   };
   // 게임패드 메뉴 (standard 매핑 8 View, 9 Start, 4 LB, 5 RB): Start = 일시정지 열기/닫기, View = 장비 창, LB·RB = 탭 넘기기
   const padPrev: boolean[] = [];
+  const padWindows = () => [
+    { id: 'gear2', panel: gearPanel },
+    { id: 'skills', panel: skillPanel },
+    { id: 'journal', panel: journal },
+    { id: 'shop', panel: shopPanel },
+    { id: 'talk', panel: dialogue },
+  ];
+  /** 다시 그릴 때(장착·구매 뒤 innerHTML) DOM 포커스가 사라지므로, 몇 번째 항목인지로 기억한다 */
+  let padFocus = 0;
+  document.head.append(Object.assign(document.createElement('style'), { textContent: '.padfocus { outline: 2px solid #f0e2c0; outline-offset: 2px; }' }));
   const padMenu = () => {
     const g = navigator.getGamepads?.().find((x) => x?.mapping === 'standard');
     if (!g || replay) return;
@@ -430,6 +440,24 @@ async function boot() {
       return on && !was;
     };
     const [view, menu, lb, rb] = [edge(8), edge(9), edge(4), edge(5)];
+    const [up, down, left, right, a, b] = [edge(12), edge(13), edge(14), edge(15), edge(0), edge(1)];
+    // 창 안 고르기: 십자키로 누를 수 있는 항목을 옮겨 다니고 A로 누른다, B로 창을 닫는다
+    const win = padWindows().find((w) => w.panel.open);
+    if (win) {
+      const items = [...document.querySelectorAll<HTMLElement>(`#${win.id} button:not([disabled]):not([data-close]), #${win.id} .node.can`)];
+      const step = (down || right ? 1 : 0) - (up || left ? 1 : 0);
+      if (items.length) {
+        padFocus = (Math.min(padFocus, items.length - 1) + step + items.length) % items.length;
+        const el = items[padFocus]!;
+        if (!el.classList.contains('padfocus')) {
+          document.querySelector('.padfocus')?.classList.remove('padfocus');
+          el.classList.add('padfocus');
+          el.scrollIntoView({ block: 'nearest' });
+        }
+        if (a) el.click();
+      }
+      if (b) win.panel.close();
+    } else padFocus = 0;
     const tabOpen = MENU_TABS.findIndex((t) => t.panel.open);
     if (tabOpen >= 0 && (lb || rb)) switchTab(tabOpen, (tabOpen + (rb ? 1 : MENU_TABS.length - 1)) % MENU_TABS.length);
     if (view) openPanel(tabOpen >= 0 ? MENU_TABS[tabOpen]!.panel : gearPanel);
