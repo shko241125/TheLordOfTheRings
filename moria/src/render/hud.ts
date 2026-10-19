@@ -255,72 +255,93 @@ export function createMinimap(level: Level) {
   const maxX = Math.max(...rooms.map((r) => r.max[0]));
   const minZ = Math.min(...rooms.map((r) => r.min[2]));
   const maxZ = Math.max(...rooms.map((r) => r.max[2]));
-  const scale = 240 / (maxZ - minZ);
   const pad = 6;
+  /** 캔버스 하나를 높이(지도 부분) 기준 배율로 맞춘다 */
+  const fit = (canvas: HTMLCanvasElement, height: number) => {
+    const scale = height / (maxZ - minZ);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = (maxX - minX) * scale + pad * 2;
+    const h = (maxZ - minZ) * scale + pad * 2;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+    return { g: canvas.getContext('2d')!, scale, dpr, w, h };
+  };
   const canvas = Object.assign(document.createElement('canvas'), { id: 'minimap' });
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = (maxX - minX) * scale + pad * 2;
-  const h = (maxZ - minZ) * scale + pad * 2;
-  canvas.width = w * dpr;
-  canvas.height = h * dpr;
-  canvas.style.width = `${w}px`;
-  canvas.style.height = `${h}px`;
+  const mini = fit(canvas, 240);
   document.body.appendChild(canvas);
-  const g = canvas.getContext('2d')!;
-  const X = (x: number) => pad + (x - minX) * scale;
-  const Y = (z: number) => pad + (z - minZ) * scale;
   const visited = new Set<number>();
   const portals = level.portals ?? [];
   const braziers = level.braziers ?? [];
   const roomOf = (x: number, y: number, z: number) =>
     rooms.findIndex((r) => x >= r.min[0] && x <= r.max[0] && y >= r.min[1] - 0.5 && y <= r.max[1] && z >= r.min[2] && z <= r.max[2]);
 
+  function paint({ g, scale, dpr, w, h }: ReturnType<typeof fit>, sim: Sim, px: number, pz: number, yaw: number, names: boolean) {
+    const X = (x: number) => pad + (x - minX) * scale;
+    const Y = (z: number) => pad + (z - minZ) * scale;
+    const k = names ? 2 : 1; // 큰 지도에서는 점·화살표도 키운다
+    const shown = new Set(visited);
+    sim.braziers.forEach((b) => {
+      if (!b.lit) return;
+      const r = roomOf(b.x, b.y + 0.5, b.z);
+      shown.add(r);
+      for (const pt of portals) if (pt.a === r) shown.add(pt.b); else if (pt.b === r) shown.add(pt.a);
+    });
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    g.fillStyle = 'rgba(0,0,0,.45)';
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#8a7a5c';
+    g.fillStyle = 'rgba(120,100,70,.28)';
+    g.lineWidth = 1;
+    rooms.forEach((r, i) => {
+      if (!shown.has(i)) return;
+      g.fillRect(X(r.min[0]), Y(r.min[2]), (r.max[0] - r.min[0]) * scale, (r.max[2] - r.min[2]) * scale);
+      g.strokeRect(X(r.min[0]) + 0.5, Y(r.min[2]) + 0.5, (r.max[0] - r.min[0]) * scale - 1, (r.max[2] - r.min[2]) * scale - 1);
+    });
+    if (names) {
+      g.fillStyle = '#cbbd9e';
+      g.font = '13px serif';
+      g.textAlign = 'center';
+      rooms.forEach((r, i) => shown.has(i) && g.fillText(r.name, X((r.min[0] + r.max[0]) / 2), Y((r.min[2] + r.max[2]) / 2)));
+    }
+    (level.lamps ?? []).forEach((l, i) => {
+      if (!shown.has(roomOf(l[0], l[1] + 0.5, l[2]))) return;
+      g.fillStyle = sim.lamps[i]?.lit ? '#ffcf60' : '#777';
+      g.beginPath();
+      g.arc(X(l[0]), Y(l[2]), 4 * k, 0, Math.PI * 2);
+      g.fill();
+    });
+    braziers.forEach((b, i) => {
+      if (!shown.has(roomOf(b[0], b[1] + 0.5, b[2]))) return;
+      g.fillStyle = sim.braziers[i]?.lit ? '#ffa040' : '#666';
+      g.beginPath();
+      g.arc(X(b[0]), Y(b[2]), 2.5 * k, 0, Math.PI * 2);
+      g.fill();
+    });
+    // 플레이어: 카메라가 보는 방향 삼각형 (앞 = (−sin, −cos)). 크기는 픽셀 기준 — 배율이 커져도 같은 크기
+    const fx = -Math.sin(yaw) * k, fz = -Math.cos(yaw) * k;
+    const cx = X(px), cy = Y(pz);
+    g.fillStyle = '#f4ecd8';
+    g.beginPath();
+    g.moveTo(cx + fx * 6, cy + fz * 6);
+    g.lineTo(cx - fx * 3 + fz * 3.2, cy - fz * 3 - fx * 3.2);
+    g.lineTo(cx - fx * 3 - fz * 3.2, cy - fz * 3 + fx * 3.2);
+    g.fill();
+  }
+
   return {
     visit(room: number) {
       if (room >= 0) visited.add(room);
     },
     draw(sim: Sim, px: number, pz: number, yaw: number) {
-      const shown = new Set(visited);
-      sim.braziers.forEach((b) => {
-        if (!b.lit) return;
-        const r = roomOf(b.x, b.y + 0.5, b.z);
-        shown.add(r);
-        for (const pt of portals) if (pt.a === r) shown.add(pt.b); else if (pt.b === r) shown.add(pt.a);
-      });
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.clearRect(0, 0, w, h);
-      g.fillStyle = 'rgba(0,0,0,.45)';
-      g.fillRect(0, 0, w, h);
-      g.strokeStyle = '#8a7a5c';
-      g.fillStyle = 'rgba(120,100,70,.28)';
-      g.lineWidth = 1;
-      rooms.forEach((r, i) => {
-        if (!shown.has(i)) return;
-        g.fillRect(X(r.min[0]), Y(r.min[2]), (r.max[0] - r.min[0]) * scale, (r.max[2] - r.min[2]) * scale);
-        g.strokeRect(X(r.min[0]) + 0.5, Y(r.min[2]) + 0.5, (r.max[0] - r.min[0]) * scale - 1, (r.max[2] - r.min[2]) * scale - 1);
-      });
-      (level.lamps ?? []).forEach((l, i) => {
-        if (!shown.has(roomOf(l[0], l[1] + 0.5, l[2]))) return;
-        g.fillStyle = sim.lamps[i]?.lit ? '#ffcf60' : '#777';
-        g.beginPath();
-        g.arc(X(l[0]), Y(l[2]), 4, 0, Math.PI * 2);
-        g.fill();
-      });
-      braziers.forEach((b, i) => {
-        if (!shown.has(roomOf(b[0], b[1] + 0.5, b[2]))) return;
-        g.fillStyle = sim.braziers[i]?.lit ? '#ffa040' : '#666';
-        g.beginPath();
-        g.arc(X(b[0]), Y(b[2]), 2.5, 0, Math.PI * 2);
-        g.fill();
-      });
-      // 플레이어: 카메라가 보는 방향 삼각형 (앞 = (−sin, −cos))
-      const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
-      g.fillStyle = '#f4ecd8';
-      g.beginPath();
-      g.moveTo(X(px + fx * 3), Y(pz + fz * 3));
-      g.lineTo(X(px - fx * 1.5 + fz * 1.6), Y(pz - fz * 1.5 - fx * 1.6));
-      g.lineTo(X(px - fx * 1.5 - fz * 1.6), Y(pz - fz * 1.5 + fx * 1.6));
-      g.fill();
+      paint(mini, sim, px, pz, yaw, false);
+    },
+    /** 전체 지도 (지도 탭): 같은 그림을 상자(maxW × maxH)에 맞춰 더 크게, 방 이름과 함께 */
+    drawBig(target: HTMLCanvasElement, maxW: number, maxH: number, sim: Sim, px: number, pz: number, yaw: number) {
+      const height = Math.min(maxH - pad * 2, ((maxW - pad * 2) * (maxZ - minZ)) / (maxX - minX));
+      paint(fit(target, height), sim, px, pz, yaw, true);
     },
   };
 }

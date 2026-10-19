@@ -47,6 +47,7 @@ import { createGearPanel } from './render/gearPanel';
 import { createShopPanel } from './render/shopPanel';
 import { createEscortView, createNpcView } from './render/npcs';
 import { createJournal } from './render/journal';
+import { createMapPanel } from './render/mapPanel';
 import { createDialoguePanel } from './render/dialoguePanel';
 import { mainStatus } from './quests';
 import { CMD_BOOK } from './sim/shop';
@@ -194,7 +195,7 @@ async function boot() {
   );
   const keyName = (c: string) => c.replace(/^Key/, '').replace('ShiftLeft', 'Shift');
   const k = settings.keys;
-  start.innerHTML = `클릭해서 모리아로 들어가기<small>${keyName(k.forward)}${keyName(k.left)}${keyName(k.back)}${keyName(k.right)} 이동 · 좌클릭 공격 · 우클릭(누르기) 강공격 · ${keyName(k.dodge)} 회피(길게: 질주) · ${keyName(k.parry)} 패링<br>휠 클릭 락온 · ${keyName(k.torch)} 횃불(길게: 던지기) · ${keyName(k.sense)} 돌의 감각 · ${keyName(k.interact)} 상호작용 · ${keyName(k.call)} 동료 · ${keyName(k.drink)} 약초 · ${keyName(k.crouch)} 웅크리기 · Esc 일시정지·설정<br>게임패드: Start 시작·일시정지 · View 메뉴 · LB·RB 탭 넘기기 · 창 안: 십자키 고르기·A 누르기·B 닫기</small>`;
+  start.innerHTML = `클릭해서 모리아로 들어가기<small>${keyName(k.forward)}${keyName(k.left)}${keyName(k.back)}${keyName(k.right)} 이동 · 좌클릭 공격 · 우클릭(누르기) 강공격 · ${keyName(k.dodge)} 회피(길게: 질주) · ${keyName(k.parry)} 패링<br>휠 클릭 락온 · ${keyName(k.torch)} 횃불(길게: 던지기) · ${keyName(k.sense)} 돌의 감각 · ${keyName(k.interact)} 상호작용 · ${keyName(k.call)} 동료 · ${keyName(k.drink)} 약초 · ${keyName(k.crouch)} 웅크리기 · Esc 일시정지·설정<br>게임패드: Start 시작·일시정지 · View 메뉴 · LB·RB 탭 넘기기(장비·스킬·일지·지도 — 키보드 I·Tab·J·M) · 창 안: 십자키 고르기·A 누르기·B 닫기</small>`;
   if (replay) start.innerHTML = `마자르불의 책<small>“${replay.header.line.replace(/</g, '&lt;')}”<br>클릭해서 마지막 60초 보기 · Space 0.25× 슬로우 · 마우스로 카메라</small>`;
   if (save) start.insertAdjacentHTML('beforeend', '<small>이어하기: 마지막으로 쉰 화로에서 · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>');
   // 새 게임 링크는 저장을 지운다 → 한 번 묻는다 (링크가 시작 화면 안이라 그대로 두면 클릭이 게임 시작으로도 번진다)
@@ -298,10 +299,11 @@ async function boot() {
       switchTab(tabOpen, (tabOpen + (e.code === 'KeyE' ? 1 : MENU_TABS.length - 1)) % MENU_TABS.length);
       return;
     }
-    // Tab: 스킬 창, I: 장비 창, J: 일지 (일시정지 화면 안) — 마우스로 고르도록 포인터 잠금을 푼다
-    if (e.code === 'Tab' || e.code === 'KeyI' || e.code === 'KeyJ') {
+    // Tab: 스킬 창, I: 장비 창, J: 일지, M: 지도 (일시정지 화면 안) — 마우스로 고르도록 포인터 잠금을 푼다
+    const keyTab = MENU_TABS.find((t) => t.key === (e.code === 'Tab' ? 'Tab' : e.code.replace(/^Key/, '')));
+    if (keyTab) {
       e.preventDefault();
-      openPanel(e.code === 'Tab' ? skillPanel : e.code === 'KeyI' ? gearPanel : journal);
+      openPanel(keyTab.panel);
     }
     if (e.code === 'KeyB' && replayState === 'ready') gotoReplay();
     if (e.code === settings.keys.interact && (shopPanel.open || dialogue.open)) {
@@ -382,10 +384,15 @@ async function boot() {
   );
   const shopPanel = createShopPanel(start, sim, (cmd) => input.command(cmd));
   const journal = createJournal(start, sim, () => pagesAll);
+  const mapPanel = createMapPanel(start, sim, minimap && ((c, w, h) => {
+    const at = sim.player.body.translation();
+    minimap.drawBig(c, w, h, sim, at.x, at.z, input.view.yaw);
+  }));
   const MENU_TABS = [
     { name: '⚔ 장비', key: 'I', panel: gearPanel },
     { name: '✦ 스킬', key: 'Tab', panel: skillPanel },
     { name: '📜 일지', key: 'J', panel: journal },
+    { name: '🗺 지도', key: 'M', panel: mapPanel },
   ];
   const switchTab = (from: number, to: number) => {
     if (from === to) return;
@@ -394,7 +401,7 @@ async function boot() {
   };
   // 탭 줄: 셋 중 하나가 열려 있을 때 화면 위쪽에 (지금 탭 강조, Q ◀ ▶ E). 탭을 클릭해도 넘어간다 — 클릭이 게임 시작으로 번지지 않게 막는다
   const tabBar = Object.assign(document.createElement('div'), { id: 'menutabs' });
-  tabBar.style.cssText = 'position:fixed;left:50%;top:40px;transform:translateX(-50%);display:none;gap:4px;align-items:center;z-index:3;font:13px serif;color:#9a8f7a';
+  tabBar.style.cssText = 'position:fixed;left:50%;top:40px;transform:translateX(-50%);display:none;gap:4px;align-items:center;z-index:3;font:13px serif;color:#9a8f7a;white-space:nowrap';
   tabBar.addEventListener('click', (e) => {
     e.stopPropagation();
     const to = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]')?.dataset.tab;
@@ -414,7 +421,7 @@ async function boot() {
   /** 창 하나를 연다(열려 있으면 닫는다) — 다른 창은 닫고, 마우스로 고르도록 포인터 잠금을 푼다 */
   const openPanel = (panel: (typeof MENU_TABS)[number]['panel']) => {
     if (!panel.open) document.exitPointerLock?.();
-    for (const other of [skillPanel, gearPanel, journal, shopPanel, dialogue]) if (other !== panel) other.close();
+    for (const other of [skillPanel, gearPanel, journal, mapPanel, shopPanel, dialogue]) if (other !== panel) other.close();
     start.style.display = 'grid';
     panel.toggle();
   };
@@ -424,12 +431,13 @@ async function boot() {
     { id: 'gear2', panel: gearPanel },
     { id: 'skills', panel: skillPanel },
     { id: 'journal', panel: journal },
+    { id: 'map', panel: mapPanel },
     { id: 'shop', panel: shopPanel },
     { id: 'talk', panel: dialogue },
   ];
   /** 다시 그릴 때(장착·구매 뒤 innerHTML) DOM 포커스가 사라지므로, 몇 번째 항목인지로 기억한다 */
   let padFocus = 0;
-  document.head.append(Object.assign(document.createElement('style'), { textContent: '.padfocus { outline: 2px solid #f0e2c0; outline-offset: 2px; }' }));
+  document.head.append(Object.assign(document.createElement('style'), { textContent: '.padfocus { outline: 2px solid #f0e2c0; outline-offset: 2px; } @media (max-width: 480px) { #menutabs small { display: none !important; } #menutabs span { padding: 3px 5px !important; } }' }));
   const padMenu = () => {
     const g = navigator.getGamepads?.().find((x) => x?.mapping === 'standard');
     if (!g || replay) return;
@@ -467,7 +475,7 @@ async function boot() {
         start.style.display = 'grid';
       } else if (!durin.asking) {
         // 패드 버튼은 포인터 잠금을 걸 수 있는 사용자 동작이 아니다 → 잠금 없이 화면만 닫는다 (마우스 시점은 다음 클릭부터)
-        for (const p of [skillPanel, gearPanel, journal, shopPanel, dialogue]) p.close();
+        for (const p of [skillPanel, gearPanel, journal, mapPanel, shopPanel, dialogue]) p.close();
         start.style.display = 'none';
       }
     }
@@ -480,7 +488,7 @@ async function boot() {
     const npc = t?.kind === 'npc' ? sim.level.npcs![t.index]! : null;
     if (!npc && !(t?.kind === 'escort' && t.saved)) return false;
     document.exitPointerLock?.();
-    for (const p of [skillPanel, gearPanel, journal, shopPanel]) p.close();
+    for (const p of [skillPanel, gearPanel, journal, mapPanel, shopPanel]) p.close();
     start.style.display = 'grid';
     talkingTo = npc && npc.kind !== 'fellow' ? { kind: npc.kind, name: npc.name } : null;
     if (npc) dialogue.show(npc.kind, npc.kind === 'fellow' ? COMPANIONS[classId].who : npc.name);
