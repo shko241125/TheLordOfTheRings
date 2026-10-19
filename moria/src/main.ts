@@ -194,7 +194,7 @@ async function boot() {
   );
   const keyName = (c: string) => c.replace(/^Key/, '').replace('ShiftLeft', 'Shift');
   const k = settings.keys;
-  start.innerHTML = `클릭해서 모리아로 들어가기<small>${keyName(k.forward)}${keyName(k.left)}${keyName(k.back)}${keyName(k.right)} 이동 · 좌클릭 공격 · 우클릭(누르기) 강공격 · ${keyName(k.dodge)} 회피(길게: 질주) · ${keyName(k.parry)} 패링<br>휠 클릭 락온 · ${keyName(k.torch)} 횃불(길게: 던지기) · ${keyName(k.sense)} 돌의 감각 · ${keyName(k.interact)} 상호작용 · ${keyName(k.call)} 동료 · ${keyName(k.drink)} 약초 · ${keyName(k.crouch)} 웅크리기 · Esc 일시정지·설정 (게임패드 지원)</small>`;
+  start.innerHTML = `클릭해서 모리아로 들어가기<small>${keyName(k.forward)}${keyName(k.left)}${keyName(k.back)}${keyName(k.right)} 이동 · 좌클릭 공격 · 우클릭(누르기) 강공격 · ${keyName(k.dodge)} 회피(길게: 질주) · ${keyName(k.parry)} 패링<br>휠 클릭 락온 · ${keyName(k.torch)} 횃불(길게: 던지기) · ${keyName(k.sense)} 돌의 감각 · ${keyName(k.interact)} 상호작용 · ${keyName(k.call)} 동료 · ${keyName(k.drink)} 약초 · ${keyName(k.crouch)} 웅크리기 · Esc 일시정지·설정<br>게임패드: Start 시작·일시정지 · View 메뉴 · LB·RB 탭 넘기기</small>`;
   if (replay) start.innerHTML = `마자르불의 책<small>“${replay.header.line.replace(/</g, '&lt;')}”<br>클릭해서 마지막 60초 보기 · Space 0.25× 슬로우 · 마우스로 카메라</small>`;
   if (save) start.insertAdjacentHTML('beforeend', '<small>이어하기: 마지막으로 쉰 화로에서 · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>');
   // 새 게임 링크는 저장을 지운다 → 한 번 묻는다 (링크가 시작 화면 안이라 그대로 두면 클릭이 게임 시작으로도 번진다)
@@ -251,6 +251,8 @@ async function boot() {
     void input.lock();
     void audio.unlock(); // 자동재생 정책: 사용자 클릭 안에서만 소리를 켤 수 있다
   });
+  // 패드 Start로 잠금 없이 돌아온 뒤: 화면을 클릭하면 마우스 시점(포인터 잠금)을 다시 건다
+  canvas.addEventListener('click', () => !touchMode && document.pointerLockElement !== canvas && void input.lock());
   document.addEventListener('pointerlockchange', () => {
     start.style.display = document.pointerLockElement === canvas ? 'none' : 'grid';
   });
@@ -286,6 +288,8 @@ async function boot() {
       else if (e.code === 'Enter') location.search = '';
       return;
     }
+    // 잠금 없이 플레이 중(패드 Start로 돌아옴)이면 Esc가 잠금 해제로 먹히지 않는다 → 직접 일시정지 화면을 연다
+    if (e.code === 'Escape' && start.style.display === 'none') start.style.display = 'grid';
     // 쓰러지면 새로고침 → 저장(마지막 화로)에서 다시 시작
     if (e.code === 'KeyR' && sim.player.action === 'dead') location.reload();
     // 메뉴 탭 넘기기 (계획서 13장: Q·E로 탭 전환): 장비·스킬·일지 중 하나가 열려 있으면 Q = 앞 탭, E = 다음 탭
@@ -297,11 +301,7 @@ async function boot() {
     // Tab: 스킬 창, I: 장비 창, J: 일지 (일시정지 화면 안) — 마우스로 고르도록 포인터 잠금을 푼다
     if (e.code === 'Tab' || e.code === 'KeyI' || e.code === 'KeyJ') {
       e.preventDefault();
-      const panel = e.code === 'Tab' ? skillPanel : e.code === 'KeyI' ? gearPanel : journal;
-      if (!panel.open) document.exitPointerLock?.();
-      for (const other of [skillPanel, gearPanel, journal, shopPanel, dialogue]) if (other !== panel) other.close();
-      start.style.display = 'grid';
-      panel.toggle();
+      openPanel(e.code === 'Tab' ? skillPanel : e.code === 'KeyI' ? gearPanel : journal);
     }
     if (e.code === 'KeyB' && replayState === 'ready') gotoReplay();
     if (e.code === settings.keys.interact && (shopPanel.open || dialogue.open)) {
@@ -410,6 +410,39 @@ async function boot() {
     tabBar.innerHTML = `<span data-tab="${(i + MENU_TABS.length - 1) % MENU_TABS.length}" style="cursor:pointer;margin-right:6px">Q ◀</span>${MENU_TABS.map(
       (t, k) => `<span data-tab="${k}" style="cursor:pointer;padding:3px 10px;border:1px solid ${k === i ? '#cbbd9e' : '#3a342a'};color:${k === i ? '#f0e2c0' : '#9a8f7a'};background:rgba(10,9,8,.9)">${t.name} <small style="display:inline;font-size:10px">${t.key}</small></span>`,
     ).join('')}<span data-tab="${(i + 1) % MENU_TABS.length}" style="cursor:pointer;margin-left:6px">▶ E</span>`;
+  };
+  /** 창 하나를 연다(열려 있으면 닫는다) — 다른 창은 닫고, 마우스로 고르도록 포인터 잠금을 푼다 */
+  const openPanel = (panel: (typeof MENU_TABS)[number]['panel']) => {
+    if (!panel.open) document.exitPointerLock?.();
+    for (const other of [skillPanel, gearPanel, journal, shopPanel, dialogue]) if (other !== panel) other.close();
+    start.style.display = 'grid';
+    panel.toggle();
+  };
+  // 게임패드 메뉴 (standard 매핑 8 View, 9 Start, 4 LB, 5 RB): Start = 일시정지 열기/닫기, View = 장비 창, LB·RB = 탭 넘기기
+  const padPrev: boolean[] = [];
+  const padMenu = () => {
+    const g = navigator.getGamepads?.().find((x) => x?.mapping === 'standard');
+    if (!g || replay) return;
+    const edge = (i: number) => {
+      const on = !!g.buttons[i]?.pressed;
+      const was = padPrev[i];
+      padPrev[i] = on;
+      return on && !was;
+    };
+    const [view, menu, lb, rb] = [edge(8), edge(9), edge(4), edge(5)];
+    const tabOpen = MENU_TABS.findIndex((t) => t.panel.open);
+    if (tabOpen >= 0 && (lb || rb)) switchTab(tabOpen, (tabOpen + (rb ? 1 : MENU_TABS.length - 1)) % MENU_TABS.length);
+    if (view) openPanel(tabOpen >= 0 ? MENU_TABS[tabOpen]!.panel : gearPanel);
+    if (menu) {
+      if (start.style.display === 'none') {
+        document.exitPointerLock?.();
+        start.style.display = 'grid';
+      } else if (!durin.asking) {
+        // 패드 버튼은 포인터 잠금을 걸 수 있는 사용자 동작이 아니다 → 잠금 없이 화면만 닫는다 (마우스 시점은 다음 클릭부터)
+        for (const p of [skillPanel, gearPanel, journal, shopPanel, dialogue]) p.close();
+        start.style.display = 'none';
+      }
+    }
   };
   let talkingTo: { kind: 'merchant' | 'smith'; name: string } | null = null;
   const dialogue = createDialoguePanel(start, () => ({ sim, pages: pagesAll.size }), () => talkingTo && shopPanel.show(talkingTo));
@@ -528,6 +561,7 @@ async function boot() {
     }
     input.frame(now);
     if (padActive()) useDevice('pad');
+    padMenu();
 
     // 락온: 카메라가 대상을 향해 돈다 (카메라 요는 입력의 기준이므로 이동도 대상 기준이 된다)
     // 모바일 자동 락온: 8m 안에 살아 있는 적이 있고 락온이 없으면 락온 버튼을 대신 누른다 (입력이라 리플레이에도 남는다)
