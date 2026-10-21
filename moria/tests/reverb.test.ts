@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { roomReverb } from '../src/audio/audio';
+import { musicLayers, roomReverb } from '../src/audio/audio';
 import { ZONES } from '../src/sim/zones';
 
 test('잔향: 좁은 통로·계단은 마르고, 넓은 홀은 울린다', () => {
@@ -11,4 +11,16 @@ test('잔향: 좁은 통로·계단은 마르고, 넓은 홀은 울린다', () =
   expect(by('기둥 홀')).toBe(1);
   expect(by('트롤 굴')).toBeGreaterThan(0.5);
   for (const r of all) expect(roomReverb(r)).toBeGreaterThanOrEqual(0);
+});
+
+test('음악 3레이어: 디렉터가 조일수록 현악·북은 커지고 드론은 물러나며, 북이 없으면 현악도 없다', () => {
+  const order = (['relax', 'buildup', 'warn', 'peak'] as const).map((p) => musicLayers(p, 90));
+  for (let i = 1; i < order.length; i++) {
+    expect(order[i]!.strings).toBeGreaterThan(order[i - 1]!.strings);
+    expect(order[i]!.near).toBeGreaterThan(order[i - 1]!.near);
+    expect(order[i]!.drone).toBeLessThanOrEqual(order[i - 1]!.drone);
+  }
+  expect(musicLayers('relax', 90).strings).toBe(0);
+  expect(musicLayers('peak', 0).strings).toBe(0);
+  expect(musicLayers('fade', 90).strings).toBeLessThan(musicLayers('buildup', 90).strings);
 });

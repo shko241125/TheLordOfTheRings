@@ -5,6 +5,7 @@ import type { DirectorPhase, SimEvent } from '../sim/types';
  *  - 북소리: 디렉터 BPM을 그대로 소리로. 저음 사인이 110 → 42Hz로 떨어지는 '둥' + 짧은 잡음 '탁'.
  *    '둥-둥' 강약 2박, 먼 북은 저역 필터로 뭉개고 가까운 북은 열어 준다. 동굴 잔향(합성 임펄스).
  *  - 저음 드론(바람·광산의 웅웅거림), 휘두르기·타격·돌의 감각 효과음.
+ *  - 적응형 음악 3레이어 (계획서 Q18, 디렉터 상태 연동): 드론 · 긴장 현악(떨리는 톱니파 화음) · 북. 단계마다 크기는 musicLayers 표 하나로 정한다.
  *  - 공간 음향 (계획서 12장 "소리는 두 번째 시야"): 자리가 있는 사건(적의 휘두르기·경계·활·타격 등)은 HRTF 패너를 거쳐
  *    카메라 기준 방향·거리로 들린다. 자리가 없는 사건(플레이어 피격·구매·레벨업)은 그대로 가운데.
  * 브라우저 자동재생 정책: 첫 클릭(start)에서 resume() 해야 소리가 난다.
@@ -22,6 +23,16 @@ export function roomReverb(room: { min: readonly number[]; max: readonly number[
   return Math.max(0, Math.min(1, (narrow - 6) / 20));
 }
 
+/**
+ * 디렉터 단계 → 음악 레이어 크기 (계획서 Q18 '적응형 음악 3레이어').
+ * drone = 바닥 드론 게인, strings = 긴장 현악 게인, near = 북의 거리감 0(멀리·뭉갬)..1(가까이·열림).
+ * 북이 없으면(bpm 0 — 디렉터가 쉬는 구역) 현악도 없다. 고조 → 경고 → 절정에서 현악이 커지고 드론은 물러난다.
+ */
+export function musicLayers(phase: DirectorPhase, bpm: number): { drone: number; strings: number; near: number } {
+  const t = { relax: [0.05, 0, 0], buildup: [0.05, 0.02, 0.3], warn: [0.04, 0.04, 0.7], peak: [0.03, 0.06, 1], fade: [0.05, 0.012, 0.35] }[phase];
+  return { drone: t[0]!, strings: bpm > 0 ? t[1]! : 0, near: t[2]! };
+}
+
 export function createAudio() {
   let ctx: AudioContext | null = null;
   let master: GainNode;
@@ -29,6 +40,8 @@ export function createAudio() {
   let drumBus: GainNode;
   let drumFilter: BiquadFilterNode;
   let sfx: GainNode;
+  let drone: GainNode;
+  let strings: GainNode;
   let nextBeat = 0;
   let beatIndex = 0;
   let bpm = 0;
@@ -78,7 +91,7 @@ export function createAudio() {
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
 
     // 드론: 살짝 어긋난 두 저음 + 걸러 낸 바람 잡음
-    const drone = c.createGain();
+    drone = c.createGain();
     drone.gain.value = 0.05;
     drone.connect(master);
     for (const f of [55, 55.6, 82.4]) {
@@ -98,6 +111,34 @@ export function createAudio() {
     wg.gain.value = 0.035;
     wind.connect(wf).connect(wg).connect(master);
     wind.start();
+
+    // 긴장 현악: A2·E3 위에 B♭3(A와 반음 부딪힘)을 얹은 톱니파 화음, 음마다 ±6센트로 두 줄(합창 효과).
+    // 5.5Hz 트레몰로로 떨게 하고 900Hz 아래만 남겨 멀리서 긁는 현처럼. 디렉터가 조이면 커진다 (musicLayers)
+    strings = c.createGain();
+    strings.gain.value = 0;
+    const trem = c.createGain();
+    trem.gain.value = 0.6;
+    const lfo = c.createOscillator();
+    lfo.frequency.value = 5.5;
+    const depth = c.createGain();
+    depth.gain.value = 0.4;
+    lfo.connect(depth).connect(trem.gain);
+    lfo.start();
+    const sf = c.createBiquadFilter();
+    sf.type = 'lowpass';
+    sf.frequency.value = 900;
+    for (const f of [110, 164.8, 233.1])
+      for (const cents of [-6, 6]) {
+        const o = c.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = f;
+        o.detune.value = cents;
+        o.connect(sf);
+        o.start();
+      }
+    sf.connect(trem).connect(strings);
+    strings.connect(master);
+    strings.connect(verb);
     nextBeat = c.currentTime + 0.1;
   }
 
@@ -194,8 +235,10 @@ export function createAudio() {
       bpm = directorBpm;
       phase = directorPhase;
       const t = ctx.currentTime;
-      // 거리감: 고조 = 멀리서(뭉갠 소리, 작게) → 절정 = 가까이(열린 소리, 크게)
-      const near = phase === 'peak' ? 1 : phase === 'warn' ? 0.7 : phase === 'buildup' ? 0.3 : phase === 'fade' ? 0.35 : 0;
+      // 거리감: 고조 = 멀리서(뭉갠 소리, 작게) → 절정 = 가까이(열린 소리, 크게). 드론·현악도 같은 표에서 (2초쯤에 걸쳐 바뀐다)
+      const { near, drone: dg, strings: sg } = musicLayers(phase, bpm);
+      drone.gain.setTargetAtTime(dg, t, 0.8);
+      strings.gain.setTargetAtTime(sg, t, 0.8);
       drumBus.gain.setTargetAtTime(bpm > 0 ? 0.25 + near * 0.75 : 0, t, 0.8);
       drumFilter.frequency.setTargetAtTime(250 + near * 1400, t, 0.8);
       if (bpm <= 0) {
