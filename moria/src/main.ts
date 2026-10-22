@@ -762,6 +762,7 @@ async function boot() {
         const saved = saveNow(); // 보스 처치는 바로 저장
         // 발로그는 쓰러뜨리는 것이 아니다 (간달프와 함께 심연으로 떨어진다 — 원작 감각)
         const balrog = sim.enemies.find((e) => e.id === ev.enemy)?.kind === 'balrog';
+        audio.bossDown(balrog);
         hud.toast(`${bossName(ev.enemy)}${balrog ? '이 심연으로 사라졌다' : '을 쓰러뜨렸다'}${saved ? ' · 저장됨' : ''}`, 3);
       } else if (ev.type === 'whistle') hud.toast('대장이 휘파람을 분다 — 무리가 몰려온다!', 2.2);
       if (ev.type === 'slam') {

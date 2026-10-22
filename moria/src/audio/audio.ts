@@ -47,6 +47,8 @@ export function createAudio() {
   let drone: GainNode;
   let strings: GainNode;
   let brass: GainNode;
+  let stingBus: GainNode;
+  let quickUntil = 0; // 보스를 쓰러뜨린 직후: 이 시각까지 보스 레이어를 빨리 걷어 낸다 (스팅어가 들리게)
   let nextBeat = 0;
   let beatIndex = 0;
   let bpm = 0;
@@ -170,6 +172,9 @@ export function createAudio() {
     bf.connect(brass);
     brass.connect(master);
     brass.connect(verb);
+    stingBus = c.createGain();
+    stingBus.connect(master);
+    stingBus.connect(verb);
     nextBeat = c.currentTime + 0.1;
   }
 
@@ -268,9 +273,10 @@ export function createAudio() {
       const t = ctx.currentTime;
       // 거리감: 고조 = 멀리서(뭉갠 소리, 작게) → 절정 = 가까이(열린 소리, 크게). 드론·현악도 같은 표에서 (2초쯤에 걸쳐 바뀐다)
       const { near, drone: dg, strings: sg, brass: bg } = musicLayers(phase, bpm, bossFight);
+      const tau = t < quickUntil ? 0.12 : 0.8;
       drone.gain.setTargetAtTime(dg, t, 0.8);
-      strings.gain.setTargetAtTime(sg, t, 0.8);
-      brass.gain.setTargetAtTime(bg, t, 0.8);
+      strings.gain.setTargetAtTime(sg, t, tau);
+      brass.gain.setTargetAtTime(bg, t, tau);
       drumBus.gain.setTargetAtTime(bpm > 0 ? 0.25 + near * 0.75 : 0, t, 0.8);
       drumFilter.frequency.setTargetAtTime(250 + near * 1400, t, 0.8);
       if (bpm <= 0) {
@@ -288,6 +294,35 @@ export function createAudio() {
         beatIndex++;
         nextBeat += interval;
       }
+    },
+    /** 보스를 쓰러뜨린 순간의 마무리 음. 보스 레이어는 0.5초 안에 걷히고,
+     *  트롤·대장은 D장조 화음이 부풀었다 잦아들고(해소), 발로그는 낮은 음이 한 옥타브 미끄러져 내려간다(심연으로 떨어짐) */
+    bossDown(fall: boolean) {
+      if (!ctx || ctx.state !== 'running') return;
+      const c = ctx;
+      const t = c.currentTime;
+      quickUntil = t + 0.6;
+      const f = c.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.setValueAtTime(400, t);
+      f.frequency.exponentialRampToValueAtTime(fall ? 300 : 2000, t + 0.5);
+      f.frequency.exponentialRampToValueAtTime(300, t + 3.5);
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(fall ? 0.14 : 0.08, t + 0.25);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 4);
+      f.connect(g).connect(stingBus);
+      for (const hz of fall ? [73.4, 110] : [146.8, 220, 370]) // D3·A3·F#4 / D2·A2
+        for (const cents of [-5, 5]) {
+          const o = c.createOscillator();
+          o.type = 'sawtooth';
+          o.frequency.setValueAtTime(hz, t);
+          if (fall) o.frequency.exponentialRampToValueAtTime(hz / 2, t + 3.5);
+          o.detune.value = cents;
+          o.connect(f);
+          o.start(t);
+          o.stop(t + 4.1);
+        }
     },
     /** 매 렌더 프레임: 듣는 자리 = 카메라 (위치·앞 방향) */
     listen(px: number, py: number, pz: number, fx: number, fy: number, fz: number) {
