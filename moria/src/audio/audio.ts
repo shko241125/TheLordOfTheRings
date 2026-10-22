@@ -37,6 +37,13 @@ export function musicLayers(phase: DirectorPhase, bpm: number, boss = false): { 
   return { drone: t[0]!, strings, near: t[2]!, brass: 0 };
 }
 
+/** 자주 반복되는 전투 소리: 매번 음높이를 ±5% 흔들어 같은 소리가 기계처럼 되풀이되지 않게 한다 (멜로디·신호음은 그대로) */
+const VARIED = new Set<SimEvent['type']>(['swing', 'hit', 'block', 'guardBreak', 'death', 'shoot', 'arrowStuck', 'playerHit', 'alert']);
+/** r: 0..1 난수 → 음높이 배수 (렌더 쪽 Math.random — 시뮬레이션 결정성과 무관) */
+export function pitchJitter(type: SimEvent['type'], r: number): number {
+  return VARIED.has(type) ? 1 + (r * 2 - 1) * 0.05 : 1;
+}
+
 export function createAudio() {
   let ctx: AudioContext | null = null;
   let master: GainNode;
@@ -56,6 +63,7 @@ export function createAudio() {
   let noise: AudioBuffer;
   let onBeat: ((strong: boolean) => void) | null = null;
   let paused = false;
+  let pitch = 1; // 지금 처리 중인 사건의 음높이 배수 (event 안에서만 1이 아닐 수 있다)
 
   function impulse(c: AudioContext, seconds: number, decay: number) {
     const len = Math.floor(c.sampleRate * seconds);
@@ -211,8 +219,8 @@ export function createAudio() {
     n.buffer = noise;
     const f = c.createBiquadFilter();
     f.type = 'bandpass';
-    f.frequency.setValueAtTime(freq, t);
-    if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo, t + dur);
+    f.frequency.setValueAtTime(freq * pitch, t);
+    if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo * pitch, t + dur);
     f.Q.value = q;
     const g = c.createGain();
     g.gain.setValueAtTime(gain, t);
@@ -226,8 +234,8 @@ export function createAudio() {
     const c = ctx!;
     const t = c.currentTime;
     const o = c.createOscillator();
-    o.frequency.setValueAtTime(freq, t);
-    if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t + dur);
+    o.frequency.setValueAtTime(freq * pitch, t);
+    if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo * pitch, t + dur);
     const g = c.createGain();
     g.gain.setValueAtTime(gain, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
@@ -351,80 +359,89 @@ export function createAudio() {
     event(ev: SimEvent, at?: At | null) {
       if (!ctx || ctx.state !== 'running') return;
       const out = at ? place(at) : sfx;
-      if (ev.type === 'swing') burst(ev.actor < 0 ? 900 : 700, 1.2, 0.16, ev.actor < 0 ? 0.5 : 0.45, 2200, out);
-      else if (ev.type === 'hit') {
-        burst(180, 0.8, 0.12, 0.9, undefined, out);
-        tone(ev.heavy ? 70 : 95, 0.18, 0.5, out);
-      } else if (ev.type === 'alert') {
-        // 고블린이 알아챘다: 짧게 갈라지는 외침 — 어둠 속에서 어느 쪽인지 귀로 안다
-        burst(1100, 2.5, 0.28, 0.7, 600, out);
-        tone(330, 0.25, 0.18, out, 220);
-      } else if (ev.type === 'death') {
-        burst(500, 1, 0.4, 0.5, 120, out);
-        tone(180, 0.4, 0.2, out, 80);
-      } else if (ev.type === 'block' || ev.type === 'guardBreak') {
-        tone(ev.type === 'block' ? 520 : 260, 0.3, 0.3, out);
-        burst(2200, 2, 0.06, 0.5, undefined, out);
-      } else if (ev.type === 'pickup') {
-        if (ev.kind === 'gold') for (const [i, f] of [1760, 2350].entries()) setTimeout(() => tone(f, 0.18, 0.12), i * 60);
-        else if (ev.kind !== 'full') tone(ev.kind === 'mithril' ? 1480 : 660 + ev.grade * 110, 0.5, 0.15);
-      } else if (ev.type === 'gear') {
-        if (ev.what === 'drink') tone(300, 0.35, 0.25, sfx, 180); // 꿀꺽
-        else if (ev.what === 'buy') tone(1760, 0.2, 0.12);
-        else if (ev.what === 'upgrade') {
-          tone(880, 0.3, 0.3);
-          burst(2600, 3, 0.1, 0.5);
-        } else burst(1200, 1.5, 0.08, 0.3); // 장착·해제·버리기: 쇠붙이 덜컥
-      } else if (ev.type === 'levelUp' || ev.type === 'page') {
-        for (const [i, f] of (ev.type === 'levelUp' ? [392, 494, 587] : [523, 659]).entries()) setTimeout(() => tone(f, 0.9, 0.12), i * 120);
-      } else if (ev.type === 'playerHit') {
-        burst(120, 0.7, 0.2, 1);
-        tone(60, 0.25, 0.6);
-      } else if (ev.type === 'parry') {
-        tone(1320, 0.5, 0.25);
-        tone(1980, 0.35, 0.12);
-        burst(3000, 3, 0.08, 0.4);
-      } else if (ev.type === 'door') {
-        // 돌문이 끌리는 낮은 울림
-        burst(70, 0.6, 2.6, 0.9, 40, out);
-        tone(46, 2.4, 0.35, out);
-      } else if (ev.type === 'slam') {
-        // 땅이 울린다
-        tone(38, 0.9, 0.9, out);
-        burst(160, 0.6, 0.7, 1, 50, out);
-      } else if (ev.type === 'pillar') {
-        burst(400, 0.5, 1.8, 0.9, 80, out); // 돌이 무너져 내리는 소리
-        tone(52, 1.2, 0.5, out);
-      } else if (ev.type === 'shoot') {
-        tone(640, 0.12, 0.35, out); // 시위 튕기는 소리
-        burst(2400, 2, 0.12, 0.45, 900, out);
-      } else if (ev.type === 'arrowStuck') {
-        burst(500, 2, 0.07, 0.4, undefined, out);
-      } else if (ev.type === 'whistle') {
-        tone(1560, 0.5, 0.18, out);
-        tone(1980, 0.4, 0.12, out);
-      } else if (ev.type === 'crack') {
-        burst(260, 1.2, 0.25, 0.7, 120); // 돌이 갈라지는 둔탁한 소리
-      } else if (ev.type === 'collapse') {
-        if (ev.stage === 'fall') burst(300, 0.5, 1.6, 0.7, 70);
-        else if (ev.stage === 'impact') {
-          tone(34, 1.4, 1);
-          burst(140, 0.5, 1.4, 1, 45);
-        }
-      } else if (ev.type === 'companion') {
-        // 곤도르의 뿔나팔 (두 음이 겹친 긴 저음)
-        tone(147, 1.3, 0.35);
-        tone(220, 1.1, 0.2);
-        burst(900, 1.5, 0.3, 0.4, 400);
-      } else if (ev.type === 'rest') {
-        burst(600, 0.7, 0.9, ev.first ? 0.6 : 0.25, 200); // 불이 확 붙는 소리
-        tone(ev.first ? 196 : 220, 1.6, 0.12);
-      } else if (ev.type === 'sense') {
-        // 돌을 두드리는 '톡' + 길게 울리는 공명
-        burst(1400, 4, 0.05, 0.8);
-        tone(420, 1.8, 0.2);
-        tone(630, 1.4, 0.1);
+      pitch = pitchJitter(ev.type, Math.random());
+      try {
+        play(ev, out);
+      } finally {
+        pitch = 1; // setTimeout으로 늦게 나는 음(금화·레벨업)은 흔들지 않는다
       }
     },
   };
+
+  function play(ev: SimEvent, out: AudioNode) {
+    if (ev.type === 'swing') burst(ev.actor < 0 ? 900 : 700, 1.2, 0.16, ev.actor < 0 ? 0.5 : 0.45, 2200, out);
+    else if (ev.type === 'hit') {
+      burst(180, 0.8, 0.12, 0.9, undefined, out);
+      tone(ev.heavy ? 70 : 95, 0.18, 0.5, out);
+    } else if (ev.type === 'alert') {
+      // 고블린이 알아챘다: 짧게 갈라지는 외침 — 어둠 속에서 어느 쪽인지 귀로 안다
+      burst(1100, 2.5, 0.28, 0.7, 600, out);
+      tone(330, 0.25, 0.18, out, 220);
+    } else if (ev.type === 'death') {
+      burst(500, 1, 0.4, 0.5, 120, out);
+      tone(180, 0.4, 0.2, out, 80);
+    } else if (ev.type === 'block' || ev.type === 'guardBreak') {
+      tone(ev.type === 'block' ? 520 : 260, 0.3, 0.3, out);
+      burst(2200, 2, 0.06, 0.5, undefined, out);
+    } else if (ev.type === 'pickup') {
+      if (ev.kind === 'gold') for (const [i, f] of [1760, 2350].entries()) setTimeout(() => tone(f, 0.18, 0.12), i * 60);
+      else if (ev.kind !== 'full') tone(ev.kind === 'mithril' ? 1480 : 660 + ev.grade * 110, 0.5, 0.15);
+    } else if (ev.type === 'gear') {
+      if (ev.what === 'drink') tone(300, 0.35, 0.25, sfx, 180); // 꿀꺽
+      else if (ev.what === 'buy') tone(1760, 0.2, 0.12);
+      else if (ev.what === 'upgrade') {
+        tone(880, 0.3, 0.3);
+        burst(2600, 3, 0.1, 0.5);
+      } else burst(1200, 1.5, 0.08, 0.3); // 장착·해제·버리기: 쇠붙이 덜컥
+    } else if (ev.type === 'levelUp' || ev.type === 'page') {
+      for (const [i, f] of (ev.type === 'levelUp' ? [392, 494, 587] : [523, 659]).entries()) setTimeout(() => tone(f, 0.9, 0.12), i * 120);
+    } else if (ev.type === 'playerHit') {
+      burst(120, 0.7, 0.2, 1);
+      tone(60, 0.25, 0.6);
+    } else if (ev.type === 'parry') {
+      tone(1320, 0.5, 0.25);
+      tone(1980, 0.35, 0.12);
+      burst(3000, 3, 0.08, 0.4);
+    } else if (ev.type === 'door') {
+      // 돌문이 끌리는 낮은 울림
+      burst(70, 0.6, 2.6, 0.9, 40, out);
+      tone(46, 2.4, 0.35, out);
+    } else if (ev.type === 'slam') {
+      // 땅이 울린다
+      tone(38, 0.9, 0.9, out);
+      burst(160, 0.6, 0.7, 1, 50, out);
+    } else if (ev.type === 'pillar') {
+      burst(400, 0.5, 1.8, 0.9, 80, out); // 돌이 무너져 내리는 소리
+      tone(52, 1.2, 0.5, out);
+    } else if (ev.type === 'shoot') {
+      tone(640, 0.12, 0.35, out); // 시위 튕기는 소리
+      burst(2400, 2, 0.12, 0.45, 900, out);
+    } else if (ev.type === 'arrowStuck') {
+      burst(500, 2, 0.07, 0.4, undefined, out);
+    } else if (ev.type === 'whistle') {
+      tone(1560, 0.5, 0.18, out);
+      tone(1980, 0.4, 0.12, out);
+    } else if (ev.type === 'crack') {
+      burst(260, 1.2, 0.25, 0.7, 120); // 돌이 갈라지는 둔탁한 소리
+    } else if (ev.type === 'collapse') {
+      if (ev.stage === 'fall') burst(300, 0.5, 1.6, 0.7, 70);
+      else if (ev.stage === 'impact') {
+        tone(34, 1.4, 1);
+        burst(140, 0.5, 1.4, 1, 45);
+      }
+    } else if (ev.type === 'companion') {
+      // 곤도르의 뿔나팔 (두 음이 겹친 긴 저음)
+      tone(147, 1.3, 0.35);
+      tone(220, 1.1, 0.2);
+      burst(900, 1.5, 0.3, 0.4, 400);
+    } else if (ev.type === 'rest') {
+      burst(600, 0.7, 0.9, ev.first ? 0.6 : 0.25, 200); // 불이 확 붙는 소리
+      tone(ev.first ? 196 : 220, 1.6, 0.12);
+    } else if (ev.type === 'sense') {
+      // 돌을 두드리는 '톡' + 길게 울리는 공명
+      burst(1400, 4, 0.05, 0.8);
+      tone(420, 1.8, 0.2);
+      tone(630, 1.4, 0.1);
+    }
+  }
 }

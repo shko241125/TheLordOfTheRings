@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { musicLayers, roomReverb } from '../src/audio/audio';
+import { musicLayers, pitchJitter, roomReverb } from '../src/audio/audio';
 import { ZONES } from '../src/sim/zones';
 
 test('잔향: 좁은 통로·계단은 마르고, 넓은 홀은 울린다', () => {
@@ -34,4 +34,11 @@ test('보스전: 북이 없어도 현악이 깔리고 금관이 들어오며 드
     expect(b.drone).toBeLessThan(musicLayers(phase, 0).drone + 1e-9);
   }
   expect(musicLayers('peak', 90, true).strings).toBe(musicLayers('peak', 90).strings); // 절정의 현악은 그대로
+});
+
+test('전투 소리는 음높이가 ±5% 안에서 흔들리고, 신호음·멜로디는 그대로다', () => {
+  expect(pitchJitter('hit', 0)).toBeCloseTo(0.95);
+  expect(pitchJitter('hit', 1)).toBeCloseTo(1.05);
+  expect(pitchJitter('swing', 0.5)).toBe(1);
+  for (const t of ['levelUp', 'pickup', 'parry', 'door', 'companion'] as const) expect(pitchJitter(t, 0)).toBe(1);
 });
