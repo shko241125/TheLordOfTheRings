@@ -121,5 +121,8 @@ export function createSettingsPanel(host: HTMLElement, initial: Settings, onChan
     get open() {
       return panel.style.display === 'block';
     },
+    close() {
+      panel.style.display = 'none';
+    },
   };
 }
