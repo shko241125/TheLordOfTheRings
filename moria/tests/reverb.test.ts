@@ -24,3 +24,14 @@ test('음악 3레이어: 디렉터가 조일수록 현악·북은 커지고 드�
   expect(musicLayers('peak', 0).strings).toBe(0);
   expect(musicLayers('fade', 90).strings).toBeLessThan(musicLayers('buildup', 90).strings);
 });
+
+test('보스전: 북이 없어도 현악이 깔리고 금관이 들어오며 드론은 물러난다, 보스가 없으면 금관은 0', () => {
+  for (const phase of ['relax', 'buildup', 'warn', 'peak', 'fade'] as const) {
+    expect(musicLayers(phase, 90).brass).toBe(0);
+    const b = musicLayers(phase, 0, true);
+    expect(b.brass).toBeGreaterThan(0);
+    expect(b.strings).toBeGreaterThan(0);
+    expect(b.drone).toBeLessThan(musicLayers(phase, 0).drone + 1e-9);
+  }
+  expect(musicLayers('peak', 90, true).strings).toBe(musicLayers('peak', 90).strings); // 절정의 현악은 그대로
+});

@@ -521,13 +521,12 @@ async function boot() {
     const kind = sim.enemies.find((x) => x.id === id)?.kind ?? '';
     return level.bosses?.[i]?.name ?? BOSS_NAME[kind] ?? '';
   };
+  /** 싸우고 있는(깨어난) 보스 — 체력바와 보스 음악 레이어가 같이 본다 */
+  const awakeBoss = () =>
+    sim.bosses.map((id) => sim.enemies.find((x) => x.id === id)).find((e) => e && e.ai !== 'patrol' && e.ai !== 'dead' && e.ai !== 'suspicious');
   const bossBar = () => {
-    for (const id of sim.bosses) {
-      const e = sim.enemies.find((x) => x.id === id);
-      if (!e) continue;
-      const awake = e.ai !== 'patrol' && e.ai !== 'dead' && e.ai !== 'suspicious';
-      if (awake) return { name: bossName(id), hp: e.hp, max: BOSS_MAX[e.kind] ?? e.hp, awake, marks: BOSS_MARKS[e.kind] };
-    }
+    const e = awakeBoss();
+    if (e) return { name: bossName(e.id), hp: e.hp, max: BOSS_MAX[e.kind] ?? e.hp, awake: true, marks: BOSS_MARKS[e.kind] };
     // 방어전: 남은 물결을 막대로
     const d = sim.defense;
     const of = sim.level.defense?.waves.length ?? 0;
@@ -896,7 +895,7 @@ async function boot() {
       dressing.blade.emissive.setRGB(0.12 * k, 0.35 * k, 1.1 * k);
     }
 
-    audio.update(sim.director.bpm, sim.director.phase);
+    audio.update(sim.director.bpm, sim.director.phase, !!awakeBoss());
 
     // --- 카메라 ---
     // 리플레이: 기록된 카메라 방향 + 마우스로 돌린 만큼 (자유 카메라)

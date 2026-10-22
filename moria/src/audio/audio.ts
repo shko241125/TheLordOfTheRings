@@ -6,6 +6,7 @@ import type { DirectorPhase, SimEvent } from '../sim/types';
  *    '둥-둥' 강약 2박, 먼 북은 저역 필터로 뭉개고 가까운 북은 열어 준다. 동굴 잔향(합성 임펄스).
  *  - 저음 드론(바람·광산의 웅웅거림), 휘두르기·타격·돌의 감각 효과음.
  *  - 적응형 음악 3레이어 (계획서 Q18, 디렉터 상태 연동): 드론 · 긴장 현악(떨리는 톱니파 화음) · 북. 단계마다 크기는 musicLayers 표 하나로 정한다.
+ *    보스와 싸우는 동안은 넷째 레이어(낮은 금관 — 숨 쉬듯 부푸는 D 단조 5도)가 더해지고 현악이 깔린다.
  *  - 공간 음향 (계획서 12장 "소리는 두 번째 시야"): 자리가 있는 사건(적의 휘두르기·경계·활·타격 등)은 HRTF 패너를 거쳐
  *    카메라 기준 방향·거리로 들린다. 자리가 없는 사건(플레이어 피격·구매·레벨업)은 그대로 가운데.
  * 브라우저 자동재생 정책: 첫 클릭(start)에서 resume() 해야 소리가 난다.
@@ -28,9 +29,12 @@ export function roomReverb(room: { min: readonly number[]; max: readonly number[
  * drone = 바닥 드론 게인, strings = 긴장 현악 게인, near = 북의 거리감 0(멀리·뭉갬)..1(가까이·열림).
  * 북이 없으면(bpm 0 — 디렉터가 쉬는 구역) 현악도 없다. 고조 → 경고 → 절정에서 현악이 커지고 드론은 물러난다.
  */
-export function musicLayers(phase: DirectorPhase, bpm: number): { drone: number; strings: number; near: number } {
+export function musicLayers(phase: DirectorPhase, bpm: number, boss = false): { drone: number; strings: number; near: number; brass: number } {
   const t = { relax: [0.05, 0, 0], buildup: [0.05, 0.02, 0.3], warn: [0.04, 0.04, 0.7], peak: [0.03, 0.06, 1], fade: [0.05, 0.012, 0.35] }[phase];
-  return { drone: t[0]!, strings: bpm > 0 ? t[1]! : 0, near: t[2]! };
+  const strings = bpm > 0 ? t[1]! : 0;
+  // 보스전: 디렉터가 쉬고 있어도(북 없음) 현악은 경고 단계만큼 깔리고, 금관이 들어오며 드론은 물러난다
+  if (boss) return { drone: 0.03, strings: Math.max(strings, 0.04), near: t[2]!, brass: 0.07 };
+  return { drone: t[0]!, strings, near: t[2]!, brass: 0 };
 }
 
 export function createAudio() {
@@ -42,6 +46,7 @@ export function createAudio() {
   let sfx: GainNode;
   let drone: GainNode;
   let strings: GainNode;
+  let brass: GainNode;
   let nextBeat = 0;
   let beatIndex = 0;
   let bpm = 0;
@@ -139,6 +144,32 @@ export function createAudio() {
     sf.connect(trem).connect(strings);
     strings.connect(master);
     strings.connect(verb);
+
+    // 보스 금관: D2·A2(5도) 톱니파를 낮게 거르고, 0.25Hz로 필터를 여닫아 숨 쉬듯 부푼다 (4초에 한 번)
+    brass = c.createGain();
+    brass.gain.value = 0;
+    const bf = c.createBiquadFilter();
+    bf.type = 'lowpass';
+    bf.frequency.value = 600;
+    bf.Q.value = 2;
+    const swell = c.createOscillator();
+    swell.frequency.value = 0.25;
+    const swellDepth = c.createGain();
+    swellDepth.gain.value = 300;
+    swell.connect(swellDepth).connect(bf.frequency);
+    swell.start();
+    for (const f of [73.4, 110])
+      for (const cents of [-4, 4]) {
+        const o = c.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = f;
+        o.detune.value = cents;
+        o.connect(bf);
+        o.start();
+      }
+    bf.connect(brass);
+    brass.connect(master);
+    brass.connect(verb);
     nextBeat = c.currentTime + 0.1;
   }
 
@@ -226,7 +257,7 @@ export function createAudio() {
       if (ctx) master.gain.setTargetAtTime(on ? 0.2 : 0.8, ctx.currentTime, 0.15);
     },
     /** 매 렌더 프레임: 디렉터 상태 → 북 템포·거리감, 앞질러 예약 */
-    update(directorBpm: number, directorPhase: DirectorPhase) {
+    update(directorBpm: number, directorPhase: DirectorPhase, bossFight = false) {
       if (!ctx || ctx.state !== 'running') return;
       if (paused) {
         nextBeat = ctx.currentTime + 0.1;
@@ -236,9 +267,10 @@ export function createAudio() {
       phase = directorPhase;
       const t = ctx.currentTime;
       // 거리감: 고조 = 멀리서(뭉갠 소리, 작게) → 절정 = 가까이(열린 소리, 크게). 드론·현악도 같은 표에서 (2초쯤에 걸쳐 바뀐다)
-      const { near, drone: dg, strings: sg } = musicLayers(phase, bpm);
+      const { near, drone: dg, strings: sg, brass: bg } = musicLayers(phase, bpm, bossFight);
       drone.gain.setTargetAtTime(dg, t, 0.8);
       strings.gain.setTargetAtTime(sg, t, 0.8);
+      brass.gain.setTargetAtTime(bg, t, 0.8);
       drumBus.gain.setTargetAtTime(bpm > 0 ? 0.25 + near * 0.75 : 0, t, 0.8);
       drumFilter.frequency.setTargetAtTime(250 + near * 1400, t, 0.8);
       if (bpm <= 0) {
