@@ -195,7 +195,7 @@ async function boot() {
   );
   const keyName = (c: string) => c.replace(/^Key/, '').replace('ShiftLeft', 'Shift');
   const k = settings.keys;
-  start.innerHTML = `클릭해서 모리아로 들어가기<small>${keyName(k.forward)}${keyName(k.left)}${keyName(k.back)}${keyName(k.right)} 이동 · 좌클릭 공격 · 우클릭(누르기) 강공격 · ${keyName(k.dodge)} 회피(길게: 질주) · ${keyName(k.parry)} 패링<br>휠 클릭 락온 · ${keyName(k.torch)} 횃불(길게: 던지기) · ${keyName(k.sense)} 돌의 감각 · ${keyName(k.interact)} 상호작용 · ${keyName(k.call)} 동료 · ${keyName(k.drink)} 약초 · ${keyName(k.crouch)} 웅크리기 · Esc 일시정지·설정<br>게임패드: Start 시작·일시정지 · View 메뉴 · LB·RB 탭 넘기기(장비·스킬·일지·지도 — 키보드 I·Tab·J·M) · 일시정지·창 안: 십자키 고르기(설정 슬라이더는 좌우로 값)·A 누르기·B 닫기·오른쪽 스틱 넘기기</small>`;
+  start.innerHTML = `클릭해서 모리아로 들어가기<small>${keyName(k.forward)}${keyName(k.left)}${keyName(k.back)}${keyName(k.right)} 이동 · 좌클릭 공격 · ${classId === 'elf' ? '우클릭(누르기) 활 당기기 · 떼면 쏘기' : '우클릭(누르기) 강공격'} · ${keyName(k.dodge)} 회피(길게: 질주) · ${keyName(k.parry)} 패링<br>휠 클릭 락온 · ${keyName(k.torch)} 횃불(길게: 던지기) · ${keyName(k.sense)} 돌의 감각 · ${keyName(k.interact)} 상호작용 · ${keyName(k.call)} 동료 · ${keyName(k.drink)} 약초 · ${keyName(k.crouch)} 웅크리기 · Esc 일시정지·설정<br>게임패드: Start 시작·일시정지 · View 메뉴 · LB·RB 탭 넘기기(장비·스킬·일지·지도 — 키보드 I·Tab·J·M) · 일시정지·창 안: 십자키 고르기(설정 슬라이더는 좌우로 값)·A 누르기·B 닫기·오른쪽 스틱 넘기기</small>`;
   if (replay) start.innerHTML = `마자르불의 책<small>“${replay.header.line.replace(/</g, '&lt;')}”<br>클릭해서 마지막 60초 보기 · Space 0.25× 슬로우 · 마우스로 카메라</small>`;
   if (save) start.insertAdjacentHTML('beforeend', '<small>이어하기: 마지막으로 쉰 화로에서 · <a href="?new=1" style="color:#cbbd9e">새 게임</a></small>');
   // 새 게임 링크는 저장을 지운다 → 한 번 묻는다 (링크가 시작 화면 안이라 그대로 두면 클릭이 게임 시작으로도 번진다)

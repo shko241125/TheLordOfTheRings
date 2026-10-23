@@ -2,7 +2,7 @@ import { DT } from '../core/loop';
 import { angleDiff, dAtan2Angle, dcos, dsin } from '../core/trig';
 import type { ClassStats } from './classes';
 import {
-  COST_DODGE, COST_PARRY, DODGE_IFRAME_FROM, DODGE_IFRAME_TO, DODGE_SPEED, DODGE_TICKS, PARRY_WINDOW_FROM, PARRY_WINDOW_TO, HEAVY, HEAVY_CHARGE_MAX, HEAVY_CHARGE_MIN, INPUT_BUFFER_TICKS,
+  BOW, bowDamage, COST_DODGE, COST_PARRY, DODGE_IFRAME_FROM, DODGE_IFRAME_TO, DODGE_SPEED, DODGE_TICKS, PARRY_WINDOW_FROM, PARRY_WINDOW_TO, HEAVY, HEAVY_CHARGE_MAX, HEAVY_CHARGE_MIN, INPUT_BUFFER_TICKS,
   LIGHT_COMBO, PARRY_TICKS, PLAYER_STAGGER_TICKS, SPRINT_COST, STAMINA_MAX, STAMINA_REGEN, STAMINA_REGEN_DELAY,
   attackLength, chainFire, chainOpen, dodgeCancel, heavyDamage,
 } from './combat';
@@ -94,6 +94,16 @@ function startHeavy(sim: Sim, p: PlayerState, dir: ReturnType<typeof inputDir>) 
   const t = p.body.translation();
   emitNoise(sim, t.x, t.y, t.z, 0.6, 9, 20);
   sim.events.push({ type: 'swing', tick: sim.tick, actor: -1, attack: 'heavy' });
+}
+
+/** 엘프: 당긴 활을 놓는다. 락온이면 그 적에게, 아니면 카메라가 보는 쪽으로 돌아서 쏜다 (화살은 판정 틱에 sim.ts가 띄운다) */
+function startBow(sim: Sim, p: PlayerState, dir: ReturnType<typeof inputDir>, yaw: number) {
+  startAction(p, 'attack');
+  p.attack = { ...BOW, damage: bowDamage(p.heavyCharge) };
+  p.charging = false;
+  spend(p, sim, BOW.stamina * p.mods.stamina);
+  if (p.lockTarget >= 0) faceLockOrInput(sim, p, dir, ATTACK_TURN);
+  else p.facing = yaw & 4095;
 }
 
 function startDodge(sim: Sim, p: PlayerState, dir: ReturnType<typeof inputDir>) {
@@ -196,12 +206,15 @@ export function stepPlayer(sim: Sim, input: InputFrame) {
     case 'attack': {
       if (p.charging) {
         // 강공격 차지: 버튼을 떼거나 최대치에 이르면 발동. 차지 중에는 천천히 돈다.
-        p.heavyCharge++;
+        // 엘프의 활: 최대로 당겨도 떼기 전까지 쏘지 않는다 (조준 유지 — 계획서 '집중')
+        const bow = sim.classId === 'elf';
+        p.heavyCharge = bow ? Math.min(p.heavyCharge + 1, HEAVY_CHARGE_MAX) : p.heavyCharge + 1;
         faceLockOrInput(sim, p, dir, 30);
         brake(p, s.decel);
-        if ((input.buttons & BTN_HEAVY) === 0 || p.heavyCharge >= HEAVY_CHARGE_MAX) {
+        if ((input.buttons & BTN_HEAVY) === 0 || (!bow && p.heavyCharge >= HEAVY_CHARGE_MAX)) {
           if (p.heavyCharge < HEAVY_CHARGE_MIN && (input.buttons & BTN_HEAVY) === 0) p.heavyCharge = HEAVY_CHARGE_MIN;
-          startHeavy(sim, p, dir);
+          if (bow) startBow(sim, p, dir, input.yaw);
+          else startHeavy(sim, p, dir);
         }
         break;
       }

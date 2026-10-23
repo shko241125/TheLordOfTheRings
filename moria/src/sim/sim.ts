@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { DT } from '../core/loop';
 import { createRng, fnv1a, streamSeed } from '../core/rng';
+import { dcos, dsin } from '../core/trig';
 import { CLASS_STATS, type ClassId } from './classes';
 import { INPUT_BUFFER_TICKS, RIPOSTE_MULT, STAMINA_MAX, inArc, isActive } from './combat';
 import { createDirector, stepDirector } from './director';
@@ -14,7 +15,7 @@ import { stepPlayer } from './player';
 import { nearestInteractable, stepExits, stepInteract } from './interact';
 import { BASE_MODS, XP, addXp, applyCommand } from './growth';
 import { bossAwake } from './troll';
-import { stepArrows } from './archer';
+import { ARROW_SPEED, ARROW_TTL, stepArrows } from './archer';
 import { DARK_EMA, stepLoot } from './gear';
 import { createHorde, stepHorde } from './horde';
 import { createCollapses, createNavBlock, damageCollapse, stepCollapses } from './collapse';
@@ -155,12 +156,40 @@ export function darkMultiplier(sim: Sim, lights: readonly SimLight[]): number {
   return 1 + (DARK_BONUS + sim.player.mods.dark) * (1 - lightAt(t.x, t.y + 0.3, t.z, lights));
 }
 
+/**
+ * 엘프의 활: 가슴 높이에서 바라보는 쪽으로 화살을 띄운다. 락온이면 그 적의 몸 가운데를 겨눈다 (위아래도) — 아니면 수평.
+ * 피해는 쏠 때 정한다 (강공격 보너스·스킬·어둠 배수). 몸 반경 밖에서 출발해 자기 캡슐에 걸리지 않는다
+ */
+function shootBow(sim: Sim, me: { x: number; y: number; z: number }, dark: number) {
+  const p = sim.player;
+  const m = p.mods;
+  const sy = me.y + 0.35;
+  let dx = -dsin(p.facing), dy = 0, dz = -dcos(p.facing);
+  const target = p.lockTarget >= 0 ? sim.enemies.find((e) => e.id === p.lockTarget && e.ai !== 'dead') : undefined;
+  if (target) {
+    const t = target.body.translation();
+    const tx = t.x - me.x, ty = (target.kind === 'balrog' ? sy : t.y) - sy, tz = t.z - me.z;
+    const l = Math.hypot(tx, ty, tz) || 1;
+    dx = tx / l;
+    dy = ty / l;
+    dz = tz / l;
+  }
+  const off = p.stats.capsuleRadius + 0.15;
+  sim.arrows.push({
+    id: sim.nextArrowId++, x: me.x + dx * off, y: sy, z: me.z + dz * off, vx: dx * ARROW_SPEED, vy: dy * ARROW_SPEED, vz: dz * ARROW_SPEED, ttl: ARROW_TTL,
+    dmg: Math.round(p.attack!.damage * m.dmg * m.heavy * dark), dark,
+  });
+  emitNoise(sim, me.x, me.y, me.z, 0.3, 6, 15);
+  sim.events.push({ type: 'shoot', tick: sim.tick, enemy: -1 });
+}
+
 /** 플레이어 공격의 판정 구간: 부채꼴 안의 적에게 한 번씩 피해 */
 function resolvePlayerAttack(sim: Sim, lights: readonly SimLight[]) {
   const p = sim.player;
   const a = p.attack;
   if (p.action !== 'attack' || !a || p.charging || !isActive(a, p.actionTick)) return;
   const me = p.body.translation();
+  if (a.id === 'bow') return void shootBow(sim, me, darkMultiplier(sim, lights));
   for (const e of sim.enemies) {
     if (e.ai === 'dead' || p.hitSet.has(e.id)) continue;
     const t = e.body.translation();
@@ -301,7 +330,7 @@ export function hashSim(sim: Sim): number {
   }
   if (sim.arrows.length || sim.nextArrowId) {
     h = mix(h, sim.arrows.length, sim.nextArrowId);
-    for (const a of sim.arrows) h = mix(h, a.id, a.x, a.y, a.z, a.ttl);
+    for (const a of sim.arrows) h = a.dmg === undefined ? mix(h, a.id, a.x, a.y, a.z, a.ttl) : mix(h, a.id, a.x, a.y, a.z, a.ttl, a.dmg);
   }
   if (sim.defense.state !== 'idle') h = mix(h, ['idle', 'warn', 'wave', 'rest', 'done'].indexOf(sim.defense.state), sim.defense.wave, sim.defense.tick);
   if (sim.level.forge) h = mix(h, sim.forge.lit ? 1 : 0, ...sim.forge.plates.map((x) => (x ? 1 : 0)));

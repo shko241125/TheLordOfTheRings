@@ -43,6 +43,7 @@ const LOSE_TICKS = 360;
 const CAPSULE = (): Record<EnemyKind, { half: number; radius: number }> => ({ goblin: GOBLIN_CAPSULE, archer: GOBLIN_CAPSULE, troll: TROLL_CAPSULE, captain: CAPTAIN_CAPSULE, uruk: URUK_CAPSULE, balrog: BALROG_CAPSULE });
 const HP = (): Record<EnemyKind, number> => ({ goblin: GOBLIN_HP, archer: ARCHER_HP, troll: TROLL_HP, captain: CAPTAIN_HP, uruk: URUK_HP, balrog: BALROG_HP });
 export const enemyRadius = (k: EnemyKind) => CAPSULE()[k].radius;
+export const enemyCapsule = (k: EnemyKind) => CAPSULE()[k];
 
 export function createEnemy(sim: Sim, id: number, pos: V3, patrol: readonly V3[], kind: EnemyKind = 'goblin'): Enemy {
   const body = sim.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos[0], pos[1], pos[2]));

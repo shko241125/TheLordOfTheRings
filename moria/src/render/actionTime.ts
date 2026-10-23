@@ -28,6 +28,8 @@ export function playerPose(p: PlayerState, actions: Record<ActionSlot, ActionInf
       }
       const a = p.attack;
       if (!a) return null;
+      // 엘프의 활을 놓은 뒤: 따로 활 클립이 없어 당기던 자세(강공격 차지 끝)를 잠깐 유지한다
+      if (a.id === 'bow') return { slot: 'heavy', time: actions.heavy.impact * 0.55 };
       const slot = (a.id === 'heavy' ? 'heavy' : a.id) as ActionSlot;
       const def = a.id === 'heavy' ? HEAVY : LIGHT_COMBO.find((x) => x.id === a.id)!;
       // 강공격은 차지 자세(impact×0.55)에서 이어서 시작한다

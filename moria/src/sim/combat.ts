@@ -39,6 +39,14 @@ export const LIGHT_COMBO: readonly AttackDef[] = [
 
 export const HEAVY: AttackDef = { id: 'heavy', windup: 6, active: 5, recovery: 26, damage: 20, reach: 2.3, halfArc: deg(65), stamina: 22, lunge: 3.0, hitstop: 8 };
 
+/**
+ * 엘프의 활 (계획서 5장 '엘프 궁수: 장궁, 집중(조준 유지 시 충전)'): 강공격 버튼을 누르고 있으면 당기고, 떼면 쏜다.
+ * 당기는 시간은 강공격 차지와 같은 틱(10~45)을 쓰고, 피해는 강공격의 0.8배 — 멀리서 안전하게 치는 값.
+ * 판정 1틱(windup 끝)에 화살이 나간다. 칼 판정은 없다 (reach 0).
+ */
+export const BOW: AttackDef = { id: 'bow', windup: 2, active: 1, recovery: 16, damage: 0, reach: 0, halfArc: 0, stamina: 18, lunge: 0, hitstop: 0 };
+export const bowDamage = (charge: number) => Math.round(heavyDamage(charge) * 0.8);
+
 /** 고블린 공격: 예비 동작 0.5초 (반응 가능한 예고 — 계획서 "공정한 전투") */
 export const GOBLIN_ATTACK: AttackDef = { id: 'goblin', windup: 30, active: 5, recovery: 28, damage: 12, reach: 1.45, halfArc: deg(50), stamina: 0, lunge: 1.6, hitstop: 5 };
 

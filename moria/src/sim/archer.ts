@@ -1,7 +1,11 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { DT } from '../core/loop';
 import { dAtan2Angle } from '../core/trig';
-import { accelTo, alert, followPath, lineOfSight, perceive, setAI, steerTo, turnTo } from './enemy';
+import { accelTo, alert, damageEnemy, enemyCapsule, followPath, lineOfSight, perceive, setAI, steerTo, turnTo } from './enemy';
+import { balrogArmor } from './balrog';
+import { damageCollapse } from './collapse';
+import { emitNoise } from './perception';
+import { urukGuard } from './uruk';
 import { moveMover } from './move';
 import { hitPlayer } from './player';
 import { G_LEVEL, groups, type Enemy, type Sim, type SimLight } from './types';
@@ -17,15 +21,15 @@ export const ARCHER_HP = 20;
 export const DRAW_TICKS = 48;
 export const ARROW_SPEED = 20;
 export const ARROW_DAMAGE = 10;
-const ARROW_TTL = 90;
+export const ARROW_TTL = 90;
 const MAX_DRAWING = 2;
 const NEAR = 5;
 const FAR = 14;
 const SPEED = 3.2;
 const TURN = 90;
 
-/** fire = 발로그의 불덩이 (느리고 세다) */
-export type Arrow = { readonly id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; ttl: number; fire?: boolean };
+/** fire = 발로그의 불덩이 (느리고 세다). dmg가 있으면 엘프가 쏜 화살 (dark = 쏠 때의 어둠 배수, 사건용) */
+export type Arrow = { readonly id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; ttl: number; fire?: boolean; dmg?: number; dark?: number };
 export const ORB_SPEED = 12;
 export const ORB_DAMAGE = 20;
 
@@ -105,7 +109,24 @@ export function stepArcher(sim: Sim, e: Enemy, lights: readonly SimLight[]) {
   moveMover(e, sim.enemyController);
 }
 
-/** 화살: 레벨에 부딪히면 박히고(사라진다), 플레이어 캡슐에 닿으면 맞힌다 */
+/** 엘프의 화살: 적 캡슐(이번 틱 구간의 끝점)에 닿으면 맞히고 true. 우루크 방패는 앞에서 온 화살을 막는다, 발로그는 키가 커서 높이를 보지 않는다 */
+function arrowHitsEnemy(sim: Sim, a: Arrow, nx: number, ny: number, nz: number): boolean {
+  for (const e of sim.enemies) {
+    if (e.ai === 'dead') continue;
+    const t = e.body.translation();
+    const cap = enemyCapsule(e.kind);
+    const r = cap.radius + 0.1;
+    if ((nx - t.x) ** 2 + (nz - t.z) ** 2 >= r * r || (e.kind !== 'balrog' && Math.abs(ny - t.y) > cap.half + cap.radius)) continue;
+    const guard = e.kind === 'uruk' ? urukGuard(sim, e, a.x - a.vx, a.z - a.vz, false) : e.kind === 'balrog' ? balrogArmor(e) : 1;
+    damageEnemy(sim, e, Math.round(a.dmg! * guard));
+    emitNoise(sim, t.x, t.y, t.z, 0.6, 8, 20);
+    sim.events.push({ type: 'hit', tick: sim.tick, target: e.id, x: nx, y: ny, z: nz, heavy: false, dark: a.dark ?? 1 });
+    return true;
+  }
+  return false;
+}
+
+/** 화살: 레벨에 부딪히면 박히고(사라진다), 플레이어 캡슐에 닿으면 맞힌다 (엘프의 화살은 적과 금 간 기둥을 맞힌다) */
 export function stepArrows(sim: Sim) {
   if (sim.arrows.length === 0) return;
   const p = sim.player;
@@ -120,7 +141,15 @@ export function stepArrows(sim: Sim) {
     const nx = a.x + a.vx * DT * t, ny = a.y + a.vy * DT * t, nz = a.z + a.vz * DT * t;
     // 플레이어: 이번 틱 구간의 끝점만 본다 (한 틱 0.33m < 캡슐 지름이라 건너뛰지 않는다)
     const rr = a.fire ? r + 0.25 : r;
-    if (p.action !== 'dead' && (nx - pt.x) ** 2 + (nz - pt.z) ** 2 < rr * rr && Math.abs(ny - pt.y) < half) {
+    if (a.dmg !== undefined) {
+      // 엘프의 화살: 플레이어는 지나치고 적을 맞힌다
+      if (arrowHitsEnemy(sim, a, nx, ny, nz)) return false;
+      // 금 간 기둥은 레벨 도형이라 레이에 걸린다 → 박힌 자리가 기둥 둘레면 금이 간다 (계획서: '금 간 기둥을 화살로 쏜다')
+      if (hit) {
+        const i = sim.collapses.findIndex((c) => c.state === 'standing' && (nx - c.x) ** 2 + (nz - c.z) ** 2 < (c.radius + 0.2) ** 2);
+        if (i >= 0) damageCollapse(sim, i, a.dmg);
+      }
+    } else if (p.action !== 'dead' && (nx - pt.x) ** 2 + (nz - pt.z) ** 2 < rr * rr && Math.abs(ny - pt.y) < half) {
       const res = hitPlayer(sim, a.fire ? ORB_DAMAGE : ARROW_DAMAGE, a.x, a.z, dAtan2Angle(-a.vx, -a.vz), { unparryable: true, knockback: a.fire ? 3 : 1.5, source: a.fire ? 'balrog' : 'goblin' });
       if (res !== 'iframe') return false; // 회피 무적이면 뚫고 지나간다
     }

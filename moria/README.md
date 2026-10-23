@@ -22,6 +22,7 @@ npm run perf         # 성능 예산 측정: 구역 5개의 방마다(+발로그
 | 질주 / 회피 | Space 길게 / 짧게 | B 길게 / 짧게 |
 | 웅크리기 | C (토글) | L3 |
 | 약공격 (4타 콤보) / 강공격 (누르고 있다 떼기) | 좌클릭 / 우클릭 | X / Y |
+| 엘프: 활 (누르고 있으면 당기고 떼면 쏜다 — 오래 당길수록 세다, 락온이면 그 적을 겨눈다) | 우클릭 | Y |
 | 패링 | Shift | LB |
 | 락온 | 휠 클릭 | R3 |
 | 횃불 내려놓기·줍기·예비 켜기 / 던지기 | F 짧게 / 길게 | 십자키 위 짧게 / 길게 |
@@ -108,7 +109,7 @@ NPC 곁에서 E를 누르면 대화가 열린다(선택지는 클릭 또는 숫�
 
 - `src/core` — 고정 60Hz 루프, 시드 난수, 결정적 삼각함수·atan2, 입력(키보드·마우스·게임패드)
 - `src/sim` — 결정적 시뮬레이션 (three.js·DOM 의존 없음, Node에서 실행 가능). 브라우저는 내비메시를 `src/navWorker.ts`(웹 워커)에서 굽는다
-  - `player.ts` 이동·행동(콤보·강공격·회피·패링·스태미나·입력 버퍼·락온), `combat.ts` 수치·판정
+  - `player.ts` 이동·행동(콤보·강공격·엘프의 활·회피·패링·스태미나·입력 버퍼·락온), `combat.ts` 수치·판정, `archer.ts` 화살(고블린 궁수·엘프)
   - `enemy.ts` 고블린 AI(순찰→의심→추격→공전⇄공격, 공격 토큰 2), `perception.ts` 빛·소음 감지 필드
   - `torch.ts` 횃불 들기·내려놓기·던지기, `nav.ts` navcat 내비메시·경로, `move.ts` Rapier KCC 공용 이동
   - `growth.ts` 레벨·XP·스킬 트리, `items.ts`·`gear.ts` 장비·전리품·강화, `archer.ts` 고블린 궁수·화살, `captain.ts` 고블린 대장, `zone2.ts` 21번째 홀, `zone3.ts` 마자르불의 방, `zone4.ts` 대장간, `forge.ts` 용암·발판·모루, `zone5.ts` 크하잣둠의 다리, `shop.ts` 상점·제작, `escort.ts` 호위(광부) (대화 트리는 `src/dialogue.ts` — 시뮬레이션 밖) (퀘스트 정의·진행 계산은 `src/quests.ts` — 시뮬레이션 밖), `balrog.ts` 불길 추격·발로그, `defense.ts` 방어전, `uruk.ts` 우루크 방패, `zones.ts` 구역 목록, `build.ts` 방 빌더, `director.ts` 북소리 디렉터, `horde.ts` 고블린 물결(흐름장·승격/강등), `collapse.ts` 무너지는 기둥, `companion.ts` 동료 호출, `troll.ts` 동굴 트롤, `interact.ts` 문·화로·진행 상태, `zone1.ts` 구역 1 (방·통로·문·화로 데이터)
