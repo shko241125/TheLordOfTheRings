@@ -30,8 +30,9 @@ export function createHud() {
     #hudbars .row { display: flex; justify-content: space-between; margin-top: 6px; opacity: .85; }
     #lock { position: fixed; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 2px solid rgba(255,200,120,.9); border-radius: 50%; pointer-events: none; display: none; box-shadow: 0 0 6px rgba(255,160,60,.6); }
     #toast { position: fixed; left: 50%; top: 38%; transform: translateX(-50%); font: 600 22px/1 serif; color: #ffd28a; text-shadow: 0 0 8px #000; pointer-events: none; opacity: 0; transition: opacity .25s; }
-    #dead { position: fixed; inset: 0; display: none; place-items: center; background: rgba(20,0,0,.55); color: #e8c4b0; font: 28px/1.6 serif; text-align: center; }
+    #dead { position: fixed; inset: 0; z-index: 6; pointer-events: none; display: none; place-items: center; background: rgba(20,0,0,.55); color: #e8c4b0; font: 28px/1.6 serif; text-align: center; }
     #dead small { display: block; font-size: 14px; color: #b09080; }
+    #dead button { pointer-events: auto; font: 15px serif; margin-top: 8px; padding: 4px 14px; background: rgba(30,22,12,.85); color: #e8c4b0; border: 1px solid rgba(203,189,158,.55); cursor: pointer; }
     #dead .book { display: block; max-width: min(640px, 90vw); margin: 10px auto 14px; font: italic 17px/1.6 serif; color: #d9c7a6; }
     #prompt { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); font: 16px/1 serif; color: #f0e2c0; text-shadow: 0 0 6px #000; pointer-events: none; display: none; }
     #prompt b { display: inline-block; padding: 2px 7px; margin-right: 6px; border: 1px solid #cbbd9e; border-radius: 3px; font: 600 13px ui-monospace, monospace; }
@@ -142,17 +143,26 @@ export function createHud() {
     },
     /**
      * 쓰러짐 화면: 마자르불의 책 한 줄 + 안내. replayReady면 'B — 마지막 60초 보기'.
+     * onExport가 있으면 'ready'에서 '책 내보내기' 버튼(·X 키 안내)도 보인다
      * mode 'replay'는 재생이 끝났을 때 (다시 보기 / 게임으로)
      */
-    death(line: string, mode: 'saving' | 'ready' | 'none' | 'replay') {
+    death(line: string, mode: 'saving' | 'ready' | 'none' | 'replay', onExport?: () => void) {
       deathMode = 'shown';
       const esc = (t: string) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
       const hint =
         mode === 'replay' ? 'R — 다시 보기 · Enter — 게임으로'
-        : mode === 'ready' ? 'B — 마지막 60초 보기 · R — 다시 시작'
+        : mode === 'ready' ? `B — 마지막 60초 보기${onExport ? ' · X — 책 내보내기' : ''} · R — 다시 시작`
         : mode === 'saving' ? '기록을 적는 중… · R — 다시 시작'
         : 'R — 다시 시작';
       dead.innerHTML = `${mode === 'replay' ? '기록은 여기서 끝난다' : '쓰러졌다'}<span class="book">마자르불의 책 — “${esc(line)}”</span><small>${hint}</small>`;
+      if (mode === 'ready' && onExport) {
+        const btn = Object.assign(document.createElement('button'), { textContent: '책 내보내기' });
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation(); // 쓰러짐 화면 뒤의 게임으로 클릭이 넘어가지 않게
+          onExport();
+        });
+        dead.append(btn);
+      }
       dead.style.display = 'grid';
     },
     /** 보스 체력바 (깨어 있을 때만). marks: 페이즈가 바뀌는 체력 비율 (눈금) */

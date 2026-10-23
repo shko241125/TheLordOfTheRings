@@ -61,6 +61,7 @@ import { addToBook, deathLine, type Killer } from './replay/book';
 import { REPLAY_VERSION, decodeReplay, encodeReplay, type Replay } from './replay/codec';
 import { createRecorder } from './replay/recorder';
 import { loadReplay, saveReplay } from './replay/storage';
+import { bookFileName, wrapBook } from './replay/bookfile';
 import { restoreSim } from './sim/snapshot';
 
 const WORLD_SEED = 20260928;
@@ -284,6 +285,8 @@ async function boot() {
   // 패드 Start로 잠금 없이 돌아온 뒤: 화면을 클릭하면 마우스 시점(포인터 잠금)을 다시 건다
   canvas.addEventListener('click', () => !touchMode && document.pointerLockElement !== canvas && void input.lock());
   document.addEventListener('pointerlockchange', () => {
+    // 쓰러져 있을 때 잠금이 풀리면(책 내보내기를 누르게 일부러 푼다) 일시정지 화면으로 쓰러짐 화면을 덮지 않는다 — Esc를 한 번 더 누르면 연다
+    if (document.pointerLockElement !== canvas && !replay && sim.player.action === 'dead') return;
     start.style.display = document.pointerLockElement === canvas ? 'none' : 'grid';
   });
   window.addEventListener('resize', () => {
@@ -306,6 +309,18 @@ async function boot() {
     q.delete('new');
     q.set('replay', 'last');
     location.search = q.toString();
+  };
+  // 책 내보내기: 저장에 성공한 리플레이 바이트를 머리를 붙여 파일로 내려받는다 (서버 없이 공유)
+  let bookBytes: Uint8Array | null = null;
+  let bookZone: Replay['header']['zone'] = 'test';
+  const exportBook = () => {
+    if (!bookBytes) return;
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([wrapBook(bookBytes) as BlobPart], { type: 'application/octet-stream' })),
+      download: bookFileName(bookZone, new Date()),
+    });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 0); // 클릭이 내려받기를 시작한 뒤에
   };
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement) return;
@@ -335,6 +350,7 @@ async function boot() {
       openPanel(keyTab.panel);
     }
     if (e.code === 'KeyB' && replayState === 'ready') gotoReplay();
+    if (e.code === 'KeyX' && replayState === 'ready' && sim.player.action === 'dead') exportBook();
     if (e.code === settings.keys.interact && (shopPanel.open || dialogue.open)) {
       shopPanel.close();
       dialogue.close();
@@ -849,18 +865,23 @@ async function boot() {
         const clip = recorder!.clip(deathTick);
         // 개발 전용: 재생 끝의 해시와 비교하려고 원래 실행의 해시를 남긴다 (페이지를 넘어가므로 sessionStorage)
         if (import.meta.env.DEV) sessionStorage.setItem('moria.replayEndHash', String(hashSim(sim)));
+        bookZone = testRoom ? 'test' : zoneId;
         void encodeReplay({
           header: {
-            v: REPLAY_VERSION, simVersion: __SIM_VERSION__, zone: testRoom ? 'test' : zoneId, seed: WORLD_SEED, classId,
+            v: REPLAY_VERSION, simVersion: __SIM_VERSION__, zone: bookZone, seed: WORLD_SEED, classId,
             fromTick: clip.fromTick, showTick: clip.showTick, deathTick, line: deathLineText,
           },
           snapshot: clip.snapshot,
           inputs: clip.inputs,
         })
-          .then(saveReplay)
-          .then((ok) => {
+          .then(async (bytes) => {
+            const ok = await saveReplay(bytes);
+            if (ok) {
+              bookBytes = bytes;
+              document.exitPointerLock?.(); // 마우스로 '책 내보내기'를 누를 수 있게
+            }
             replayState = ok ? 'ready' : 'none';
-            hud.death(deathLineText, ok ? 'ready' : 'none');
+            hud.death(deathLineText, ok ? 'ready' : 'none', ok ? exportBook : undefined);
           });
       }
     }
