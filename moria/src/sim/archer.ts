@@ -9,6 +9,7 @@ import { urukGuard } from './uruk';
 import { XP, addXp } from './growth';
 import { moveMover } from './move';
 import { hitPlayer } from './player';
+import { lightLamp } from './interact';
 import { G_LEVEL, groups, type Enemy, type Sim, type SimLight } from './types';
 
 /**
@@ -23,6 +24,11 @@ export const DRAW_TICKS = 48;
 export const ARROW_SPEED = 20;
 export const ARROW_DAMAGE = 10;
 export const ARROW_TTL = 90;
+/** 불씨 화살 (횃불을 든 엘프의 화살): 박힌 자리에 남는 불씨의 수명(틱)과 최대 개수 */
+export const EMBER_TICKS = 600;
+export const MAX_EMBERS = 4;
+/** 불씨 화살이 등불 불꽃(등불 + 2m)을 이만큼 가까이 지나면 등불이 붙는다 */
+const LAMP_REACH = 0.8;
 const MAX_DRAWING = 2;
 const NEAR = 5;
 const FAR = 14;
@@ -30,7 +36,7 @@ const SPEED = 3.2;
 const TURN = 90;
 
 /** fire = 발로그의 불덩이 (느리고 세다). dmg가 있으면 엘프가 쏜 화살 (dark = 쏠 때의 어둠 배수, 사건용) */
-export type Arrow = { readonly id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; ttl: number; fire?: boolean; dmg?: number; dark?: number };
+export type Arrow = { readonly id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; ttl: number; fire?: boolean; dmg?: number; dark?: number; ember?: true };
 export const ORB_SPEED = 12;
 export const ORB_DAMAGE = 20;
 
@@ -153,6 +159,7 @@ export function stepArrows(sim: Sim) {
     const rr = a.fire ? r + 0.25 : r;
     if (a.dmg !== undefined) {
       // 엘프의 화살: 플레이어는 지나치고 적을 맞힌다
+      if (a.ember) lightLampsAlong(sim, a.x, a.y, a.z, nx, ny, nz);
       if (arrowHitsEnemy(sim, a, nx, ny, nz)) return false;
       // 금 간 기둥은 레벨 도형이라 레이에 걸린다 → 박힌 자리가 기둥 둘레면 금이 간다 (계획서: '금 간 기둥을 화살로 쏜다')
       if (hit) {
@@ -164,7 +171,12 @@ export function stepArrows(sim: Sim) {
       if (res !== 'iframe') return false; // 회피 무적이면 뚫고 지나간다
     }
     if (hit || --a.ttl <= 0) {
-      if (hit) sim.events.push({ type: 'arrowStuck', tick: sim.tick, x: nx, y: ny, z: nz });
+      if (hit && a.ember) {
+        // 박힌 자리에 불씨가 남는다 — 넘치면 가장 오래된 것이 꺼진다
+        sim.embers.push({ x: nx, y: ny, z: nz, ttl: EMBER_TICKS });
+        if (sim.embers.length > MAX_EMBERS) sim.embers.shift();
+      }
+      if (hit) sim.events.push(a.ember ? { type: 'arrowStuck', tick: sim.tick, x: nx, y: ny, z: nz, ember: true } : { type: 'arrowStuck', tick: sim.tick, x: nx, y: ny, z: nz });
       return false;
     }
     a.x = nx;
@@ -172,4 +184,21 @@ export function stepArrows(sim: Sim) {
     a.z = nz;
     return true;
   });
+}
+
+/** 이번 틱 구간(a→n)이 꺼진 등불의 불꽃 가까이를 지나면 밝힌다 (상호작용으로 밝힌 것과 같다) */
+function lightLampsAlong(sim: Sim, ax: number, ay: number, az: number, nx: number, ny: number, nz: number) {
+  const dx = nx - ax, dy = ny - ay, dz = nz - az;
+  const len2 = dx * dx + dy * dy + dz * dz || 1;
+  sim.lamps.forEach((l, i) => {
+    if (l.lit) return;
+    const fy = l.y + 2;
+    const t = Math.max(0, Math.min(1, ((l.x - ax) * dx + (fy - ay) * dy + (l.z - az) * dz) / len2));
+    if ((ax + dx * t - l.x) ** 2 + (ay + dy * t - fy) ** 2 + (az + dz * t - l.z) ** 2 < LAMP_REACH * LAMP_REACH) lightLamp(sim, i);
+  });
+}
+
+/** 박힌 불씨가 타들어 간다 (틱 단위) */
+export function stepEmbers(sim: Sim) {
+  if (sim.embers.length) sim.embers = sim.embers.filter((e) => --e.ttl > 0);
 }

@@ -240,7 +240,7 @@ export type SimEvent =
   | { type: 'shoot'; tick: number; enemy: number }
   | { type: 'pickup'; tick: number; kind: 'item' | 'gold' | 'mithril' | 'full'; amount: number; name: string; grade: number }
   | { type: 'gear'; tick: number; what: 'equip' | 'unequip' | 'drop' | 'upgrade' | 'buy' | 'drink'; name: string }
-  | { type: 'arrowStuck'; tick: number; x: number; y: number; z: number }
+  | { type: 'arrowStuck'; tick: number; x: number; y: number; z: number; ember?: true }
   | { type: 'whistle'; tick: number; enemy: number }
   | { type: 'exit'; tick: number; to: string; entry: string }
   | { type: 'exitLocked'; tick: number; reason: string }
@@ -295,6 +295,8 @@ export type Sim = {
   /** 날아가는 화살 (고블린 궁수) */
   arrows: import('./archer').Arrow[];
   nextArrowId: number;
+  /** 불씨 화살이 박힌 자리에 남은 불씨 (오래된 것부터, ttl = 남은 틱) */
+  embers: { x: number; y: number; z: number; ttl: number }[];
   /** 퀘스트 등불 (구역 2 — 21번째 홀) */
   readonly lamps: { readonly x: number; readonly y: number; readonly z: number; lit: boolean }[];
   /** 구역 출구로 나갔다 (한 번만 사건을 낸다) */

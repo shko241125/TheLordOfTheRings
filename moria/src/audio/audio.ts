@@ -445,6 +445,7 @@ export function createAudio() {
       burst(2400, 2, 0.12, 0.45, 900, out);
     } else if (ev.type === 'arrowStuck') {
       burst(500, 2, 0.07, 0.4, undefined, out);
+      if (ev.ember) burst(4200, 1.5, 0.45, 0.25, 2500, out); // 불씨가 박히며 '치익' 타는 소리
     } else if (ev.type === 'whistle') {
       tone(1560, 0.5, 0.18, out);
       tone(1980, 0.4, 0.12, out);

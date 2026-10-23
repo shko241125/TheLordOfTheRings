@@ -181,7 +181,7 @@ async function boot() {
   // 트롤은 플레이어용으로 리타게팅한 강공격·수평 베기 클립을 빌린다 (같은 UAL 골격일 때만)
   const hordeView = await createHordeView(sim, gs.scene);
   const collapseView = createCollapseView(sim, gs.scene);
-  const arrowView = createArrowView(sim, gs.scene);
+  const arrowView = createArrowView(sim, gs.scene, backend);
   const balrogView = createBalrogView(sim, gs.scene, backend);
   createNpcView(level, gs.scene, backend);
   const escortView = createEscortView(sim, gs.scene);
@@ -908,7 +908,8 @@ async function boot() {
       const q = t.body ? t.body.rotation() : null;
       looseList.push(q ? { x: t.x, y: t.y, z: t.z, qx: q.x, qy: q.y, qz: q.z, qw: q.w } : { x: t.x, y: t.y - 0.1, z: t.z, ...LYING });
     }
-    gs.update(view, looseList, holding);
+    arrowView.update(); // 불씨 자리(glows)를 먼저 채운다 → WebGL2 광원 후보
+    gs.update(view, looseList, holding, arrowView.glows);
     gs.props(dt, sim.doors.map((d) => d.open), sim.braziers.map((b) => b.lit), view, sim.lamps.map((l) => l.lit), sim.forge);
 
     // --- 돌의 감각 (후처리 음파 + 움직이는 고블린 드러내기) ---
@@ -927,7 +928,6 @@ async function boot() {
     hordeView?.sense(sense.x, sense.z, senseR, senseS);
     hordeView?.update(animDt, sim.hitstop > 0 ? 1 : alpha, gs.seen, impostors);
     collapseView.update(animDt);
-    arrowView.update();
     balrogView.update(animDt);
     escortView.update(animDt);
     lootView.update(animDt);

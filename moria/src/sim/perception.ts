@@ -47,6 +47,9 @@ const BRAZIER: Omit<SimLight, 'x' | 'y' | 'z'> = { intensity: 1, range: 10 };
 /** 21번째 홀의 등불: 넓은 빛 — 밝힐수록 홀의 어둠(무리의 영역)이 줄어든다 */
 const LAMP: Omit<SimLight, 'x' | 'y' | 'z'> = { intensity: 1, range: 16 };
 const GROUND_TORCH: Omit<SimLight, 'x' | 'y' | 'z'> = { intensity: 0.85, range: 7 };
+/** 불씨 화살: 날아가는 동안은 작은 빛, 박힌 불씨는 조금 더 밝게 10초 */
+const EMBER_ARROW: Omit<SimLight, 'x' | 'y' | 'z'> = { intensity: 0.6, range: 4 };
+const EMBER: Omit<SimLight, 'x' | 'y' | 'z'> = { intensity: 0.7, range: 5 };
 
 /** 손에 든 횃불 위치: 몸 왼쪽 앞, 가슴 높이 (렌더의 실제 손 위치와 20cm 이내면 충분하다) */
 export function heldTorchPos(px: number, py: number, pz: number, facing: number): [number, number, number] {
@@ -64,5 +67,7 @@ export function allLights(sim: Sim): SimLight[] {
     const kind = t.state === 'held' ? HELD_TORCH : GROUND_TORCH;
     out.push({ x: t.x, y: t.y, z: t.z, ...kind });
   }
+  for (const a of sim.arrows) if (a.ember) out.push({ x: a.x, y: a.y, z: a.z, ...EMBER_ARROW });
+  for (const e of sim.embers) out.push({ x: e.x, y: e.y, z: e.z, ...EMBER });
   return out;
 }

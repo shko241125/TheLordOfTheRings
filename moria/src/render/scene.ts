@@ -59,8 +59,8 @@ export type GameScene = {
   playerTorch: PointLight;
   /** 카메라를 따라다니는 약한 보조광 (main이 위치를 넣는다) */
   fill: PointLight;
-  /** 매 렌더 프레임: 횃불 깜빡임, 떨어진 횃불 배치, WebGL2에서는 가까운 횃불로 광원 재배치 */
-  update(focus: Vector3, loose: readonly LooseTorch[], holdingTorch: boolean): void;
+  /** 매 렌더 프레임: 횃불 깜빡임, 떨어진 횃불 배치, WebGL2에서는 가까운 횃불(+ glows: 불씨 자리)로 광원 재배치 */
+  update(focus: Vector3, loose: readonly LooseTorch[], holdingTorch: boolean, glows?: readonly Vector3[]): void;
   /** 문 여닫이·이실딘 빛·화로 불 (시뮬레이션 상태를 그대로 받는다) */
   props(dt: number, doorsOpen: readonly boolean[], braziersLit: readonly boolean[], player: Vector3, lampsLit?: readonly boolean[], forge?: { lit: boolean; plates: readonly boolean[] }): void;
   /** 트롤이 기둥을 부쉈다: 기둥을 숨기고 돌조각을 흩뿌린다 (렌더 전용 — 조각은 물리와 무관) */
@@ -379,7 +379,7 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
     scene,
     playerTorch,
     fill,
-    update(focus, looseList, holdingTorch) {
+    update(focus, looseList, holdingTorch, glows = []) {
       // 떨어진 횃불 배치
       looseCount = Math.min(looseList.length, DYNAMIC_POOL);
       for (let i = 0; i < DYNAMIC_POOL; i++) {
@@ -399,6 +399,7 @@ export function buildScene(level: Level, renderer: WebGPURenderer, backend: Back
         candidates.push(...torchPos, ...looseFlamePos.slice(0, looseCount));
         for (const b of braziers) if (b.lit) candidates.push(b.pos);
         for (const l of lamps) if (l.lit) candidates.push(l.pos);
+        candidates.push(...glows);
         order.length = 0;
         for (let i = 0; i < candidates.length; i++) order.push(i);
         order.sort((a, b) => candidates[a]!.distanceToSquared(focus) - candidates[b]!.distanceToSquared(focus));

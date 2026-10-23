@@ -56,6 +56,7 @@ export function takeSnapshot(sim: Sim): SimSnapshot {
     navBlock: [...sim.navBlock.excluded],
     arrows: sim.arrows,
     nextArrowId: sim.nextArrowId,
+    embers: sim.embers,
     loot: sim.loot,
     nextLootId: sim.nextLootId,
     nextItemId: sim.nextItemId,
@@ -84,6 +85,7 @@ const parse = (s: string) => JSON.parse(s, reviver) as {
   navBlock: number[];
   arrows: Sim['arrows'];
   nextArrowId: number;
+  embers?: Sim['embers'];
   loot: Sim['loot'];
   nextLootId: number;
   nextItemId: number;
@@ -144,6 +146,7 @@ export function restoreSim(level: Level, seed: number, classId: ClassId, snap: S
   });
   sim.arrows = st.arrows ?? [];
   sim.nextArrowId = st.nextArrowId ?? 0;
+  sim.embers = st.embers ?? [];
   sim.loot = st.loot ?? [];
   sim.nextLootId = st.nextLootId ?? 0;
   sim.nextItemId = st.nextItemId ?? 0;

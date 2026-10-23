@@ -15,7 +15,7 @@ import { stepPlayer } from './player';
 import { nearestInteractable, stepExits, stepInteract } from './interact';
 import { BASE_MODS, XP, addXp, applyCommand } from './growth';
 import { bossAwake } from './troll';
-import { ARROW_SPEED, ARROW_TTL, stepArrows } from './archer';
+import { ARROW_SPEED, ARROW_TTL, stepArrows, stepEmbers } from './archer';
 import { DARK_EMA, stepLoot } from './gear';
 import { createHorde, stepHorde } from './horde';
 import { createCollapses, createNavBlock, damageCollapse, stepCollapses } from './collapse';
@@ -120,6 +120,7 @@ export function createSim(level: Level, seed: number, classId: ClassId = 'human'
     collapses: [],
     arrows: [],
     nextArrowId: 0,
+    embers: [],
     loot: [],
     nextLootId: 0,
     nextItemId: 0,
@@ -178,6 +179,7 @@ function shootBow(sim: Sim, me: { x: number; y: number; z: number }, dark: numbe
   sim.arrows.push({
     id: sim.nextArrowId++, x: me.x + dx * off, y: sy, z: me.z + dz * off, vx: dx * ARROW_SPEED, vy: dy * ARROW_SPEED, vz: dz * ARROW_SPEED, ttl: ARROW_TTL,
     dmg: Math.round(p.attack!.damage * m.dmg * m.heavy * dark), dark,
+    ...(p.heldTorch >= 0 ? { ember: true as const } : {}), // 횃불을 들고 쏘면 불씨 화살 (횃불은 그대로)
   });
   emitNoise(sim, me.x, me.y, me.z, 0.3, 6, 15);
   sim.events.push({ type: 'shoot', tick: sim.tick, enemy: -1 });
@@ -267,6 +269,7 @@ export function stepSim(sim: Sim, input: InputFrame): void {
   resolvePlayerAttack(sim, lights);
   stepEnemies(sim, lights);
   stepHorde(sim, lights);
+  stepEmbers(sim);
   stepArrows(sim);
   stepLoot(sim);
   stepCollapses(sim);
@@ -331,6 +334,12 @@ export function hashSim(sim: Sim): number {
   if (sim.arrows.length || sim.nextArrowId) {
     h = mix(h, sim.arrows.length, sim.nextArrowId);
     for (const a of sim.arrows) h = a.dmg === undefined ? mix(h, a.id, a.x, a.y, a.z, a.ttl) : mix(h, a.id, a.x, a.y, a.z, a.ttl, a.dmg);
+    if (sim.arrows.some((a) => a.ember)) h = mix(h, ...sim.arrows.map((a) => (a.ember ? 1 : 0)));
+  }
+  // 불씨: 있을 때만 섞는다 (기존 골든 해시 유지)
+  if (sim.embers.length) {
+    h = mix(h, sim.embers.length);
+    for (const e of sim.embers) h = mix(h, e.x, e.y, e.z, e.ttl);
   }
   if (sim.defense.state !== 'idle') h = mix(h, ['idle', 'warn', 'wave', 'rest', 'done'].indexOf(sim.defense.state), sim.defense.wave, sim.defense.tick);
   if (sim.level.forge) h = mix(h, sim.forge.lit ? 1 : 0, ...sim.forge.plates.map((x) => (x ? 1 : 0)));
