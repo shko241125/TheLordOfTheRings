@@ -14,6 +14,8 @@ import { createGoblins, type Impostor } from './render/goblins';
 import { createDurinUI } from './render/durin';
 import { createCollapseView } from './render/collapse';
 import { createArrowView } from './render/arrows';
+import { createStainView } from './render/stains';
+import { addStain, createStainNotifier, loadStains, stainsIn, type Stain } from './replay/stains';
 import { TROLL_HP } from './sim/troll';
 import { GOBLIN_HP } from './sim/enemy';
 import { ARCHER_HP } from './sim/archer';
@@ -182,6 +184,11 @@ async function boot() {
   const hordeView = await createHordeView(sim, gs.scene);
   const collapseView = createCollapseView(sim, gs.scene);
   const arrowView = createArrowView(sim, gs.scene, backend);
+  // 지난날의 흔적: 이 구역에서 쓰러진 자리 (표현 전용 — 시뮬레이션·저장·리플레이와 무관). 죽으면 새로고침하므로 부팅 때 한 번 읽는다
+  const stainsOn = !testRoom && !replay;
+  const stains: Stain[] = stainsOn ? stainsIn(loadStains(), zoneId) : [];
+  const stainView = createStainView(gs.scene, stains);
+  const stainNotifier = createStainNotifier();
   const balrogView = createBalrogView(sim, gs.scene, backend);
   createNpcView(level, gs.scene, backend);
   const escortView = createEscortView(sim, gs.scene);
@@ -834,6 +841,7 @@ async function boot() {
         const r = gs.roomAt(curr.pos);
         deathLineText = deathLine(deathTick, lastHit, r >= 0 ? level.rooms![r]!.name : '', classId);
         addToBook(deathLineText);
+        if (stainsOn) addStain({ zone: zoneId, x: curr.pos.x, y: curr.pos.y - footDrop, z: curr.pos.z, line: deathLineText, at: Date.now() });
         replayState = 'saving';
         hud.death(deathLineText, 'saving');
       } else if (replayState === 'saving' && sim.tick >= deathTick + 90) {
@@ -907,6 +915,11 @@ async function boot() {
       if (t.state === 'held') continue;
       const q = t.body ? t.body.rotation() : null;
       looseList.push(q ? { x: t.x, y: t.y, z: t.z, qx: q.x, qy: q.y, qz: q.z, qw: q.w } : { x: t.x, y: t.y - 0.1, z: t.z, ...LYING });
+    }
+    stainView.update(now);
+    if (stainsOn && !paused && sim.player.action !== 'dead') {
+      const s = stainNotifier.update(stains, zoneId, curr.pos.x, curr.pos.z);
+      if (s) hud.toast('지난날의 흔적 — “' + s.line + '”', 4);
     }
     arrowView.update(); // 불씨 자리(glows)를 먼저 채운다 → WebGL2 광원 후보
     gs.update(view, looseList, holding, arrowView.glows);
