@@ -2,6 +2,7 @@ import { COMPANIONS } from './sim/companion';
 import type { NavMesh } from 'navcat';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three/webgpu';
+import { HEAVY_CHARGE_MAX, HEAVY_CHARGE_MIN } from './sim/combat';
 import { createAudio, roomReverb, type BossKind } from './audio/audio';
 import { createInput } from './core/input';
 import { DT, createFixedStep } from './core/loop';
@@ -218,6 +219,27 @@ async function boot() {
   // 보간용: 직전 틱과 현재 틱의 상태
   const footDrop = stats.capsuleHalf + stats.capsuleRadius + KCC_OFFSET;
   const height = 2 * (stats.capsuleHalf + stats.capsuleRadius);
+  // 엘프의 조준 표시: 활을 당기는 동안 화살이 갈 곳(락온 대상, 아니면 카메라 앞 15m)에 원을 그리고, 당긴 만큼 안쪽 점이 커진다
+  const reticle = Object.assign(document.createElement('div'), { id: 'reticle' });
+  reticle.style.cssText = 'position:fixed;left:0;top:0;width:28px;height:28px;margin:-14px 0 0 -14px;border:1.5px solid rgba(240,226,192,.85);border-radius:50%;pointer-events:none;display:none;z-index:1;box-shadow:0 0 3px #000';
+  reticle.innerHTML = '<div style="position:absolute;left:50%;top:50%;width:100%;height:100%;border-radius:50%;background:rgba(240,226,192,.8);transform:translate(-50%,-50%) scale(0)"></div>';
+  document.body.append(reticle);
+  const aimAt = new Vector3();
+  const showReticle = () => {
+    const p = sim.player;
+    if (classId !== 'elf' || p.action !== 'attack' || !p.charging || replay) return void (reticle.style.display = 'none');
+    const me = p.body.translation();
+    const lock = p.lockTarget >= 0 ? sim.enemies.find((e) => e.id === p.lockTarget && e.ai !== 'dead') : undefined;
+    if (lock) aimAt.copy(lock.body.translation() as Vector3);
+    else aimAt.set(me.x - Math.sin(input.view.yaw) * 15, me.y + 0.35, me.z - Math.cos(input.view.yaw) * 15);
+    aimAt.project(follow.camera);
+    if (aimAt.z > 1) return void (reticle.style.display = 'none'); // 카메라 뒤
+    reticle.style.display = 'block';
+    reticle.style.transform = `translate(${((aimAt.x + 1) / 2) * innerWidth}px, ${((1 - aimAt.y) / 2) * innerHeight}px)`;
+    const k = Math.min(1, Math.max(0, (p.heavyCharge - HEAVY_CHARGE_MIN) / (HEAVY_CHARGE_MAX - HEAVY_CHARGE_MIN)));
+    (reticle.firstChild as HTMLElement).style.transform = `translate(-50%,-50%) scale(${0.15 + 0.45 * k})`;
+    reticle.style.borderColor = k >= 1 ? '#ffd27a' : 'rgba(240,226,192,.85)'; // 끝까지 당기면 금빛
+  };
   const prev = { pos: new Vector3(), facing: 0, vx: 0, vz: 0 };
   const curr = { pos: new Vector3(), facing: 0, vx: 0, vz: 0 };
   const capture = (o: typeof prev) => {
@@ -951,6 +973,7 @@ async function boot() {
     for (const e of sim.enemies) lastEnemyHp.set(e.id, e.hp);
     const lockFrac = lockT && !BOSS_MAX[lockT.kind] && lockT.ai !== 'dead' ? lockT.hp / ENEMY_MAX[lockT.kind]! : null;
     hud.update(dt, sim, lockT ? (goblins.screenPos(lockT.id, follow.camera) ?? trolls.screenPos(lockT.id, follow.camera)) : null, lockFrac);
+    showReticle();
     const target = nearestInteractable(sim);
     hud.prompt(target, durin.isOpen || sim.player.action !== 'free' || !!replay);
     const hint = durin.update(dt, target?.kind === 'door');

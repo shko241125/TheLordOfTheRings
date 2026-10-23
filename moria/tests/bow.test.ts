@@ -2,6 +2,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { bowDamage } from '../src/sim/combat';
 import { createEnemy } from '../src/sim/enemy';
+import { spawnHorde } from '../src/sim/horde';
 import type { Level } from '../src/sim/level';
 import { BTN_HEAVY, createSim, disposeSim, hashSim, stepSim, type InputFrame, type Sim } from '../src/sim/sim';
 import { restoreSim, takeSnapshot } from '../src/sim/snapshot';
@@ -91,6 +92,22 @@ describe('엘프의 활', () => {
     const hp0 = s.collapses[0]!.hp;
     drawAndLoose(s, 30, 40);
     expect(s.collapses[0]!.hp).toBeLessThan(hp0);
+    disposeSim(s);
+  });
+
+  it('무리도 화살 한 발에 하나가 쓰러진다', () => {
+    const s = createSim(ZONE1, 1, 'elf');
+    s.doors[0]!.open = true;
+    s.player.body.setTranslation({ x: -6, y: 5.2, z: -12 }, true); // 기둥 홀, 서쪽(−X)을 본다
+    run(s, idle(0, 1024), 20);
+    const n = spawnHorde(s, [-14.5, 4, -12], 10);
+    expect(n).toBeGreaterThan(0);
+    const before = s.horde!.agents.length;
+    const hits = () => s.events.filter((e) => e.type === 'hit' && e.target === -1).length;
+    const h0 = hits();
+    drawAndLoose(s, 20, 30, 1024);
+    expect(hits() - h0).toBe(1);
+    expect(s.horde!.agents.length).toBeLessThan(before);
     disposeSim(s);
   });
 

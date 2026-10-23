@@ -6,6 +6,7 @@ import { balrogArmor } from './balrog';
 import { damageCollapse } from './collapse';
 import { emitNoise } from './perception';
 import { urukGuard } from './uruk';
+import { XP, addXp } from './growth';
 import { moveMover } from './move';
 import { hitPlayer } from './player';
 import { G_LEVEL, groups, type Enemy, type Sim, type SimLight } from './types';
@@ -123,7 +124,16 @@ function arrowHitsEnemy(sim: Sim, a: Arrow, nx: number, ny: number, nz: number):
     sim.events.push({ type: 'hit', tick: sim.tick, target: e.id, x: nx, y: ny, z: nz, heavy: false, dark: a.dark ?? 1 });
     return true;
   }
-  return false;
+  // 무리(물리 없는 점): 칼과 같이 한 대에 쓰러진다 — 화살 하나에 하나
+  const h = sim.horde;
+  const i = h ? h.agents.findIndex((g) => (nx - g.x) ** 2 + (nz - g.z) ** 2 < 0.4 * 0.4 && Math.abs(ny - (g.y + 0.8)) < 0.8) : -1;
+  if (i < 0) return false;
+  const g = h!.agents[i]!;
+  h!.agents.splice(i, 1);
+  sim.events.push({ type: 'hit', tick: sim.tick, target: -1, x: g.x, y: g.y + 1, z: g.z, heavy: false, dark: 1 });
+  sim.player.companion = Math.min(100, sim.player.companion + sim.player.mods.ally);
+  addXp(sim, XP.horde);
+  return true;
 }
 
 /** 화살: 레벨에 부딪히면 박히고(사라진다), 플레이어 캡슐에 닿으면 맞힌다 (엘프의 화살은 적과 금 간 기둥을 맞힌다) */
