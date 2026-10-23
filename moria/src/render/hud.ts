@@ -256,17 +256,19 @@ export function createMinimap(level: Level) {
   const minZ = Math.min(...rooms.map((r) => r.min[2]));
   const maxZ = Math.max(...rooms.map((r) => r.max[2]));
   const pad = 6;
-  /** 캔버스 하나를 높이(지도 부분) 기준 배율로 맞춘다 */
-  const fit = (canvas: HTMLCanvasElement, height: number) => {
+  /** 캔버스 하나를 높이(지도 부분) 기준 배율로 맞춘다. minW: 지도가 좁아도 이 폭은 확보하고 가운데에 둔다 (방 이름 자리) */
+  const fit = (canvas: HTMLCanvasElement, height: number, minW = 0) => {
     const scale = height / (maxZ - minZ);
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = (maxX - minX) * scale + pad * 2;
+    const natural = (maxX - minX) * scale + pad * 2;
+    const w = Math.max(natural, minW);
+    const ox = (w - natural) / 2;
     const h = (maxZ - minZ) * scale + pad * 2;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
-    return { g: canvas.getContext('2d')!, scale, dpr, w, h };
+    return { g: canvas.getContext('2d')!, scale, dpr, w, h, ox };
   };
   const canvas = Object.assign(document.createElement('canvas'), { id: 'minimap' });
   const mini = fit(canvas, 240);
@@ -277,8 +279,8 @@ export function createMinimap(level: Level) {
   const roomOf = (x: number, y: number, z: number) =>
     rooms.findIndex((r) => x >= r.min[0] && x <= r.max[0] && y >= r.min[1] - 0.5 && y <= r.max[1] && z >= r.min[2] && z <= r.max[2]);
 
-  function paint({ g, scale, dpr, w, h }: ReturnType<typeof fit>, sim: Sim, px: number, pz: number, yaw: number, names: boolean) {
-    const X = (x: number) => pad + (x - minX) * scale;
+  function paint({ g, scale, dpr, w, h, ox }: ReturnType<typeof fit>, sim: Sim, px: number, pz: number, yaw: number, names: boolean) {
+    const X = (x: number) => ox + pad + (x - minX) * scale;
     const Y = (z: number) => pad + (z - minZ) * scale;
     const k = names ? 2 : 1; // 큰 지도에서는 점·화살표도 키운다
     const shown = new Set(visited);
@@ -300,12 +302,6 @@ export function createMinimap(level: Level) {
       g.fillRect(X(r.min[0]), Y(r.min[2]), (r.max[0] - r.min[0]) * scale, (r.max[2] - r.min[2]) * scale);
       g.strokeRect(X(r.min[0]) + 0.5, Y(r.min[2]) + 0.5, (r.max[0] - r.min[0]) * scale - 1, (r.max[2] - r.min[2]) * scale - 1);
     });
-    if (names) {
-      g.fillStyle = '#cbbd9e';
-      g.font = '13px serif';
-      g.textAlign = 'center';
-      rooms.forEach((r, i) => shown.has(i) && g.fillText(r.name, X((r.min[0] + r.max[0]) / 2), Y((r.min[2] + r.max[2]) / 2)));
-    }
     (level.lamps ?? []).forEach((l, i) => {
       if (!shown.has(roomOf(l[0], l[1] + 0.5, l[2]))) return;
       g.fillStyle = sim.lamps[i]?.lit ? '#ffcf60' : '#777';
@@ -320,6 +316,24 @@ export function createMinimap(level: Level) {
       g.arc(X(b[0]), Y(b[2]), 2.5 * k, 0, Math.PI * 2);
       g.fill();
     });
+    // 방 이름: 점 위에, 플레이어 아래에. 어두운 테두리로 선·점 위에서도 읽히게, 캔버스 밖으로 나가지 않게 안으로 민다
+    if (names) {
+      g.font = '13px serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.lineJoin = 'round';
+      g.lineWidth = 4;
+      g.strokeStyle = 'rgba(10,9,8,.9)';
+      g.fillStyle = '#e6d6b8';
+      rooms.forEach((r, i) => {
+        if (!shown.has(i)) return;
+        const half = g.measureText(r.name).width / 2 + 3;
+        const x = Math.min(w - half, Math.max(half, X((r.min[0] + r.max[0]) / 2)));
+        const y = Math.min(h - 9, Math.max(9, Y((r.min[2] + r.max[2]) / 2)));
+        g.strokeText(r.name, x, y);
+        g.fillText(r.name, x, y);
+      });
+    }
     // 플레이어: 카메라가 보는 방향 삼각형 (앞 = (−sin, −cos)). 크기는 픽셀 기준 — 배율이 커져도 같은 크기
     const fx = -Math.sin(yaw) * k, fz = -Math.cos(yaw) * k;
     const cx = X(px), cy = Y(pz);
@@ -341,7 +355,7 @@ export function createMinimap(level: Level) {
     /** 전체 지도 (지도 탭): 같은 그림을 상자(maxW × maxH)에 맞춰 더 크게, 방 이름과 함께 */
     drawBig(target: HTMLCanvasElement, maxW: number, maxH: number, sim: Sim, px: number, pz: number, yaw: number) {
       const height = Math.min(maxH - pad * 2, ((maxW - pad * 2) * (maxZ - minZ)) / (maxX - minX));
-      paint(fit(target, height), sim, px, pz, yaw, true);
+      paint(fit(target, height, Math.min(maxW, 320)), sim, px, pz, yaw, true);
     },
   };
 }

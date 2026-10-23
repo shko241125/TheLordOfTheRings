@@ -991,6 +991,7 @@ async function boot() {
       sim,
       rig,
       audio,
+      minimap,
       renderer,
       input,
       loco: () => loco.debug(),
