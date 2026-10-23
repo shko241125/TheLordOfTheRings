@@ -2,7 +2,7 @@ import { COMPANIONS } from './sim/companion';
 import type { NavMesh } from 'navcat';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three/webgpu';
-import { createAudio, roomReverb } from './audio/audio';
+import { createAudio, roomReverb, type BossKind } from './audio/audio';
 import { createInput } from './core/input';
 import { DT, createFixedStep } from './core/loop';
 import { angleDiff, angleToRad } from './core/trig';
@@ -923,7 +923,7 @@ async function boot() {
       dressing.blade.emissive.setRGB(0.12 * k, 0.35 * k, 1.1 * k);
     }
 
-    audio.update(sim.director.bpm, sim.director.phase, !!awakeBoss());
+    audio.update(sim.director.bpm, sim.director.phase, (awakeBoss()?.kind as BossKind | undefined) ?? null);
 
     // --- 카메라 ---
     // 리플레이: 기록된 카메라 방향 + 마우스로 돌린 만큼 (자유 카메라)

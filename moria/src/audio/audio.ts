@@ -29,11 +29,22 @@ export function roomReverb(room: { min: readonly number[]; max: readonly number[
  * drone = 바닥 드론 게인, strings = 긴장 현악 게인, near = 북의 거리감 0(멀리·뭉갬)..1(가까이·열림).
  * 북이 없으면(bpm 0 — 디렉터가 쉬는 구역) 현악도 없다. 고조 → 경고 → 절정에서 현악이 커지고 드론은 물러난다.
  */
-export function musicLayers(phase: DirectorPhase, bpm: number, boss = false): { drone: number; strings: number; near: number; brass: number } {
+export type BossKind = 'troll' | 'captain' | 'balrog';
+/**
+ * 보스마다 금관의 목소리: root = 바닥음(Hz, 그 위 5도를 함께 낸다), swell = 필터가 열렸다 닫히는 빠르기(Hz), cutoff = 필터 가운데(Hz), gain = 크기.
+ * 트롤: 느릿한 D2 숨 / 대장: 한 음 높은 E2, 2초마다 조이는 행군 / 발로그: 한 옥타브 아래 D1, 8초에 한 번 깊게, 어둡고 크다
+ */
+export const BOSS_VOICES: Record<BossKind, { root: number; swell: number; cutoff: number; gain: number }> = {
+  troll: { root: 73.4, swell: 0.25, cutoff: 600, gain: 0.07 },
+  captain: { root: 82.4, swell: 0.5, cutoff: 900, gain: 0.06 },
+  balrog: { root: 36.7, swell: 0.125, cutoff: 420, gain: 0.1 },
+};
+
+export function musicLayers(phase: DirectorPhase, bpm: number, boss: BossKind | null = null): { drone: number; strings: number; near: number; brass: number } {
   const t = { relax: [0.05, 0, 0], buildup: [0.05, 0.02, 0.3], warn: [0.04, 0.04, 0.7], peak: [0.03, 0.06, 1], fade: [0.05, 0.012, 0.35] }[phase];
   const strings = bpm > 0 ? t[1]! : 0;
   // 보스전: 디렉터가 쉬고 있어도(북 없음) 현악은 경고 단계만큼 깔리고, 금관이 들어오며 드론은 물러난다
-  if (boss) return { drone: 0.03, strings: Math.max(strings, 0.04), near: t[2]!, brass: 0.07 };
+  if (boss) return { drone: 0.03, strings: Math.max(strings, 0.04), near: t[2]!, brass: BOSS_VOICES[boss].gain };
   return { drone: t[0]!, strings, near: t[2]!, brass: 0 };
 }
 
@@ -54,6 +65,8 @@ export function createAudio() {
   let drone: GainNode;
   let strings: GainNode;
   let brass: GainNode;
+  let brassVoice: (k: BossKind) => void;
+  let voiced: BossKind = 'troll';
   let stingBus: GainNode;
   let quickUntil = 0; // 보스를 쓰러뜨린 직후: 이 시각까지 보스 레이어를 빨리 걷어 낸다 (스팅어가 들리게)
   let nextBeat = 0;
@@ -155,7 +168,7 @@ export function createAudio() {
     strings.connect(master);
     strings.connect(verb);
 
-    // 보스 금관: D2·A2(5도) 톱니파를 낮게 거르고, 0.25Hz로 필터를 여닫아 숨 쉬듯 부푼다 (4초에 한 번)
+    // 보스 금관: 바닥음과 5도 위 톱니파를 낮게 거르고, 느린 LFO로 필터를 여닫아 숨 쉬듯 부푼다. 음높이·빠르기·밝기는 보스마다 (BOSS_VOICES)
     brass = c.createGain();
     brass.gain.value = 0;
     const bf = c.createBiquadFilter();
@@ -168,15 +181,26 @@ export function createAudio() {
     swellDepth.gain.value = 300;
     swell.connect(swellDepth).connect(bf.frequency);
     swell.start();
-    for (const f of [73.4, 110])
+    const voices: [OscillatorNode, number][] = [];
+    for (const ratio of [1, 1.5])
       for (const cents of [-4, 4]) {
         const o = c.createOscillator();
         o.type = 'sawtooth';
-        o.frequency.value = f;
+        o.frequency.value = BOSS_VOICES.troll.root * ratio;
         o.detune.value = cents;
         o.connect(bf);
         o.start();
+        voices.push([o, ratio]);
       }
+    // 보스가 바뀌면 0.3초쯤에 걸쳐 미끄러지듯 목소리를 바꾼다 (끊기는 소리 없이)
+    brassVoice = (k) => {
+      const v = BOSS_VOICES[k];
+      const t = c.currentTime;
+      for (const [o, ratio] of voices) o.frequency.setTargetAtTime(v.root * ratio, t, 0.3);
+      swell.frequency.setTargetAtTime(v.swell, t, 0.3);
+      bf.frequency.setTargetAtTime(v.cutoff, t, 0.3);
+      swellDepth.gain.setTargetAtTime(v.cutoff / 2, t, 0.3);
+    };
     bf.connect(brass);
     brass.connect(master);
     brass.connect(verb);
@@ -270,7 +294,8 @@ export function createAudio() {
       if (ctx) master.gain.setTargetAtTime(on ? 0.2 : 0.8, ctx.currentTime, 0.15);
     },
     /** 매 렌더 프레임: 디렉터 상태 → 북 템포·거리감, 앞질러 예약 */
-    update(directorBpm: number, directorPhase: DirectorPhase, bossFight = false) {
+    /** boss: 깨어난 보스의 종류 (없으면 null) */
+    update(directorBpm: number, directorPhase: DirectorPhase, boss: BossKind | null = null) {
       if (!ctx || ctx.state !== 'running') return;
       if (paused) {
         nextBeat = ctx.currentTime + 0.1;
@@ -280,7 +305,9 @@ export function createAudio() {
       phase = directorPhase;
       const t = ctx.currentTime;
       // 거리감: 고조 = 멀리서(뭉갠 소리, 작게) → 절정 = 가까이(열린 소리, 크게). 드론·현악도 같은 표에서 (2초쯤에 걸쳐 바뀐다)
-      const { near, drone: dg, strings: sg, brass: bg } = musicLayers(phase, bpm, bossFight);
+      // 보스가 사라져도 목소리는 그대로 두고 크기만 줄인다 (잦아드는 동안 음이 바뀌지 않게)
+      if (boss && boss !== voiced) brassVoice((voiced = boss));
+      const { near, drone: dg, strings: sg, brass: bg } = musicLayers(phase, bpm, boss);
       const tau = t < quickUntil ? 0.12 : 0.8;
       drone.gain.setTargetAtTime(dg, t, 0.8);
       strings.gain.setTargetAtTime(sg, t, tau);
