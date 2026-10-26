@@ -27,6 +27,10 @@ export const ARROW_TTL = 90;
 /** 불씨 화살 (횃불을 든 엘프의 화살): 박힌 자리에 남는 불씨의 수명(틱)과 최대 개수 */
 export const EMBER_TICKS = 600;
 export const MAX_EMBERS = 4;
+/** 불씨 밟기: 무리가 수평 SMOTHER_RADIUS m 안(엄격)에 SMOTHER_COUNT마리 이상 SMOTHER_TICKS틱 내리 몰려 있으면 불씨가 꺼진다 */
+export const SMOTHER_RADIUS = 5;
+export const SMOTHER_COUNT = 6;
+export const SMOTHER_TICKS = 90;
 /** 불씨 화살이 등불 불꽃(등불 + 2m)을 이만큼 가까이 지나면 등불이 붙는다 */
 const LAMP_REACH = 0.8;
 const MAX_DRAWING = 2;
@@ -173,7 +177,7 @@ export function stepArrows(sim: Sim) {
     if (hit || --a.ttl <= 0) {
       if (hit && a.ember) {
         // 박힌 자리에 불씨가 남는다 — 넘치면 가장 오래된 것이 꺼진다
-        sim.embers.push({ x: nx, y: ny, z: nz, ttl: EMBER_TICKS });
+        sim.embers.push({ x: nx, y: ny, z: nz, ttl: EMBER_TICKS, press: 0 });
         if (sim.embers.length > MAX_EMBERS) sim.embers.shift();
       }
       if (hit) sim.events.push(a.ember ? { type: 'arrowStuck', tick: sim.tick, x: nx, y: ny, z: nz, ember: true } : { type: 'arrowStuck', tick: sim.tick, x: nx, y: ny, z: nz });
@@ -195,6 +199,24 @@ function lightLampsAlong(sim: Sim, ax: number, ay: number, az: number, nx: numbe
     const fy = l.y + 2;
     const t = Math.max(0, Math.min(1, ((l.x - ax) * dx + (fy - ay) * dy + (l.z - az) * dz) / len2));
     if ((ax + dx * t - l.x) ** 2 + (ay + dy * t - fy) ** 2 + (az + dz * t - l.z) ** 2 < LAMP_REACH * LAMP_REACH) lightLamp(sim, i);
+  });
+}
+
+/** 한 틱의 불씨 밟기: 무리(sim.horde)만 센다. 시간도 ttl도 건드리지 않는다 */
+export function smotherEmbers(sim: Sim) {
+  const agents = sim.horde?.agents;
+  if (!sim.embers.length || !agents?.length) {
+    for (const e of sim.embers) e.press = 0;
+    return;
+  }
+  const r2 = SMOTHER_RADIUS * SMOTHER_RADIUS;
+  sim.embers = sim.embers.filter((e) => {
+    let n = 0;
+    for (const a of agents) if ((a.x - e.x) ** 2 + (a.z - e.z) ** 2 < r2 && ++n >= SMOTHER_COUNT) break;
+    e.press = n >= SMOTHER_COUNT ? e.press + 1 : 0;
+    if (e.press < SMOTHER_TICKS) return true;
+    sim.events.push({ type: 'emberOut', tick: sim.tick, x: e.x, y: e.y, z: e.z });
+    return false;
   });
 }
 

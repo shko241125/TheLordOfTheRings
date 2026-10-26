@@ -85,7 +85,7 @@ const parse = (s: string) => JSON.parse(s, reviver) as {
   navBlock: number[];
   arrows: Sim['arrows'];
   nextArrowId: number;
-  embers?: Sim['embers'];
+  embers?: (Omit<Sim['embers'][number], 'press'> & { press?: number })[];
   loot: Sim['loot'];
   nextLootId: number;
   nextItemId: number;
@@ -146,7 +146,7 @@ export function restoreSim(level: Level, seed: number, classId: ClassId, snap: S
   });
   sim.arrows = st.arrows ?? [];
   sim.nextArrowId = st.nextArrowId ?? 0;
-  sim.embers = st.embers ?? [];
+  sim.embers = (st.embers ?? []).map((e) => ({ ...e, press: e.press ?? 0 })); // 옛 스냅샷의 불씨엔 press가 없다
   sim.loot = st.loot ?? [];
   sim.nextLootId = st.nextLootId ?? 0;
   sim.nextItemId = st.nextItemId ?? 0;

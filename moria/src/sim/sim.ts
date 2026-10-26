@@ -15,7 +15,7 @@ import { stepPlayer } from './player';
 import { nearestInteractable, stepExits, stepInteract } from './interact';
 import { BASE_MODS, XP, addXp, applyCommand } from './growth';
 import { bossAwake } from './troll';
-import { ARROW_SPEED, ARROW_TTL, stepArrows, stepEmbers } from './archer';
+import { ARROW_SPEED, ARROW_TTL, smotherEmbers, stepArrows, stepEmbers } from './archer';
 import { DARK_EMA, stepLoot } from './gear';
 import { createHorde, stepHorde } from './horde';
 import { createCollapses, createNavBlock, damageCollapse, stepCollapses } from './collapse';
@@ -269,6 +269,7 @@ export function stepSim(sim: Sim, input: InputFrame): void {
   resolvePlayerAttack(sim, lights);
   stepEnemies(sim, lights);
   stepHorde(sim, lights);
+  smotherEmbers(sim); // 무리가 움직인 뒤 — 꺼진 불씨는 이 틱에 시간으로 또 꺼지지 않는다
   stepEmbers(sim);
   stepArrows(sim);
   stepLoot(sim);
@@ -339,7 +340,7 @@ export function hashSim(sim: Sim): number {
   // 불씨: 있을 때만 섞는다 (기존 골든 해시 유지)
   if (sim.embers.length) {
     h = mix(h, sim.embers.length);
-    for (const e of sim.embers) h = mix(h, e.x, e.y, e.z, e.ttl);
+    for (const e of sim.embers) h = mix(h, e.x, e.y, e.z, e.ttl, e.press);
   }
   if (sim.defense.state !== 'idle') h = mix(h, ['idle', 'warn', 'wave', 'rest', 'done'].indexOf(sim.defense.state), sim.defense.wave, sim.defense.tick);
   if (sim.level.forge) h = mix(h, sim.forge.lit ? 1 : 0, ...sim.forge.plates.map((x) => (x ? 1 : 0)));
