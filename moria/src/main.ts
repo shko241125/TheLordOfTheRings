@@ -25,6 +25,7 @@ import { BALROG_HP } from './sim/balrog';
 import { createBalrogView } from './render/balrog';
 import { createHordeView } from './render/horde';
 import { createHud, createMinimap } from './render/hud';
+import { roomsInEcho } from './render/echoMap';
 import { createTrolls } from './render/troll';
 import { createLocomotion } from './render/locomotion';
 import { createPost } from './render/post';
@@ -952,6 +953,7 @@ async function boot() {
     const senseR = st < 0 ? 0 : sense.maxR * Math.min(1, st);
     const senseS = st < 0 ? 0 : st < 3 ? 1 : Math.max(0, 1 - (st - 3) / 0.5);
     Object.assign(goblins.sense, { x: sense.x, z: sense.z, radius: senseR, strength: senseS });
+    if (!paused && senseR > 0 && senseS > 0) minimap?.echo(roomsInEcho(sim.level.rooms ?? [], sense.x, sense.y, sense.z, senseR)); // 메아리 지도: 파동이 보이는 동안 닿은 방은 점선 윤곽으로
 
     // --- 적 ---
     impostors.length = 0;

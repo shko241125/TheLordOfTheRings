@@ -7,6 +7,7 @@ import { difficultyOf, xpToNext } from '../sim/growth';
 
 const DIFF_NAMES = { story: ' · 스토리', easy: ' · 쉬움', normal: '', hard: ' · 어려움' } as const;
 import { GRADE_COLORS, GRADE_NAMES } from '../sim/items';
+import { createEchoSet } from './echoMap';
 
 /**
  * HUD (HTML 오버레이 — 계획서 13장). 전투 중에는 가장자리에만: 좌하단 체력·스태미나, 락온 표식, 짧은 알림.
@@ -221,6 +222,7 @@ export function createHud() {
       // 전투 중 = 락온, 스태미나 회복 중, 체력 변화, 공격·회피 등 행동 중. 그 뒤 5초 지나면 흐리게
       if (lockScreen || p.stamina < STAMINA_MAX || p.action !== 'free' || hpChanged) lastBusy = clock;
       root.style.opacity = slots.style.opacity = clock - lastBusy > 5 && p.hp > p.maxHp * 0.35 ? '0.3' : '1';
+      if (p.action === 'dead') slots.style.opacity = '0'; // 쓰러짐 화면(책 내보내기 버튼) 밑에 행동 칸이 비치지 않게
       st.style.width = `${(p.stamina / STAMINA_MAX) * 100}%`;
       stBar.classList.toggle('low', p.exhausted);
       const senseLeft = Math.max(0, p.senseReadyAt - sim.tick);
@@ -284,6 +286,7 @@ export function createMinimap(level: Level) {
   const mini = fit(canvas, 240);
   document.body.appendChild(canvas);
   const visited = new Set<number>();
+  const echoed = createEchoSet(); // 돌의 감각으로 들은 방 — 윤곽선만
   const portals = level.portals ?? [];
   const braziers = level.braziers ?? [];
   const roomOf = (x: number, y: number, z: number) =>
@@ -312,6 +315,13 @@ export function createMinimap(level: Level) {
       g.fillRect(X(r.min[0]), Y(r.min[2]), (r.max[0] - r.min[0]) * scale, (r.max[2] - r.min[2]) * scale);
       g.strokeRect(X(r.min[0]) + 0.5, Y(r.min[2]) + 0.5, (r.max[0] - r.min[0]) * scale - 1, (r.max[2] - r.min[2]) * scale - 1);
     });
+    // 들었지만 보지 못한 방: 점선 윤곽만 (채움·이름·불빛 점 없음)
+    g.setLineDash([3 * k, 3 * k]);
+    rooms.forEach((r, i) => {
+      if (shown.has(i) || !echoed.has(i)) return;
+      g.strokeRect(X(r.min[0]) + 0.5, Y(r.min[2]) + 0.5, (r.max[0] - r.min[0]) * scale - 1, (r.max[2] - r.min[2]) * scale - 1);
+    });
+    g.setLineDash([]);
     (level.lamps ?? []).forEach((l, i) => {
       if (!shown.has(roomOf(l[0], l[1] + 0.5, l[2]))) return;
       g.fillStyle = sim.lamps[i]?.lit ? '#ffcf60' : '#777';
@@ -358,6 +368,10 @@ export function createMinimap(level: Level) {
   return {
     visit(room: number) {
       if (room >= 0) visited.add(room);
+    },
+    /** 돌의 감각 파동이 닿은 방들 (roomsInEcho 결과) */
+    echo(indices: readonly number[]) {
+      echoed.add(indices);
     },
     draw(sim: Sim, px: number, pz: number, yaw: number) {
       paint(mini, sim, px, pz, yaw, false);

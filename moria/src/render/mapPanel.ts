@@ -32,7 +32,7 @@ export function createMapPanel(host: HTMLElement, sim: Sim, draw: ((c: HTMLCanva
     const zone = sim.level.id ? ZONE_NAMES[sim.level.id as ZoneId] : '시험 방';
     panel.innerHTML = `<h3>지도 <small>— ${zone}</small></h3><canvas></canvas>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:12px">
-        <small class="legend">가 본 곳과 밝힌 화로 곁만 보인다 · 위가 북쪽 <span><i style="background:#f4ecd8;border-radius:0"></i>나</span> <span><i style="background:#ffa040"></i>화로</span> <span><i style="background:#ffcf60"></i>등불</span></small>
+        <small class="legend">가 본 곳과 밝힌 화로 곁이 보인다 · 점선 = 돌의 감각으로 들은 곳 · 위가 북쪽 <span><i style="background:#f4ecd8;border-radius:0"></i>나</span> <span><i style="background:#ffa040"></i>화로</span> <span><i style="background:#ffcf60"></i>등불</span></small>
         <button data-close>닫기 (M)</button></div>`;
     const canvas = panel.querySelector('canvas')!;
     if (draw) draw(canvas, Math.min(820, innerWidth - 60), innerHeight - 270); // 위 탭 줄(top 40px)과 겹치지 않게 위아래 여백을 남긴다
